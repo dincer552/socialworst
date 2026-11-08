@@ -172,7 +172,7 @@ class TerminalActivity : ComponentActivity(), SshConnectionManager.SshCallback {
 
     private fun startTerminalBridge() {
         try {
-            val bridge = extractBridge()
+            val bridge = packagedBridge()
 
             val server = ServerSocket()
             server.reuseAddress = true
@@ -229,25 +229,14 @@ class TerminalActivity : ComponentActivity(), SshConnectionManager.SshCallback {
         }
     }
 
-    private fun extractBridge(): File {
-        val binDir = File(filesDir, "bin")
-        check(binDir.exists() || binDir.mkdirs()) { "Uygulama binary dizini oluşturulamadı." }
-        val target = File(binDir, Constants.SSHBRIDGE_BIN_NAME)
-        if (!target.isFile || target.length() < 512) {
-            val temp = File(binDir, "sshbridge.tmp")
-            assets.open(Constants.SSHBRIDGE_ASSET_PATH).use { input ->
-                temp.outputStream().use { output -> input.copyTo(output) }
-            }
-            check(temp.setExecutable(true, true)) { "sshbridge çalıştırılabilir yapılamadı." }
-            if (!temp.renameTo(target)) {
-                target.delete()
-                check(temp.renameTo(target)) { "sshbridge dosyası kurulamadı." }
-            }
+    private fun packagedBridge(): File {
+        val nativeDirectory = File(applicationInfo.nativeLibraryDir)
+        val bridge = File(nativeDirectory, Constants.SSHBRIDGE_NATIVE_LIB_NAME)
+        check(bridge.isFile && bridge.canExecute()) {
+            "Android native PTY bridge is unavailable or not executable in nativeLibraryDir."
         }
-        check(target.canExecute()) { "Android bu cihazda sshbridge binary dosyasını çalıştıramıyor." }
-        return target
+        return bridge
     }
-
     private fun createTerminalSessionClient() = object : TerminalSessionClient {
         override fun onTextChanged(changedSession: TerminalSession) {
             runOnUiThread { terminalView.onScreenUpdated() }

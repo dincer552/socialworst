@@ -49,6 +49,12 @@ android {
     }
 
     packaging {
+        jniLibs {
+            // Android 10+ blocks exec() from the writable app home directory.
+            // Extract APK-packaged executable payloads to nativeLibraryDir.
+            useLegacyPackaging = true
+            keepDebugSymbols += setOf("**/libcloudflared.so", "**/libsshbridge.so")
+        }
         resources {
             excludes += setOf(
                 "META-INF/AL2.0",

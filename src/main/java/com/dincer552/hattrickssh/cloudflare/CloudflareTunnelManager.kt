@@ -45,7 +45,7 @@ class CloudflareTunnelManager(
     @Synchronized
     private fun start(hostname: String) {
         stop()
-        val binary = extractExecutable(Constants.CLOUDFLARED_ASSET_PATH, Constants.CLOUDFLARED_BIN_NAME)
+        val binary = packagedExecutable(Constants.CLOUDFLARED_NATIVE_LIB_NAME)
         val home = File(appContext.filesDir, "cloudflared-home")
         val config = File(home, ".cloudflared")
         check(config.exists() || config.mkdirs()) { "Cloudflare private config directory could not be created" }
@@ -65,25 +65,17 @@ class CloudflareTunnelManager(
         readDiagnostics(child)
     }
 
-    private fun extractExecutable(assetPath: String, fileName: String): File {
-        val binDir = File(appContext.filesDir, "bin")
-        check(binDir.exists() || binDir.mkdirs()) { "App binary directory could not be created" }
-        val target = File(binDir, fileName)
-        if (!target.isFile || target.length() < 1024) {
-            val temp = File(binDir, "$fileName.tmp")
-            appContext.assets.open(assetPath).use { input ->
-                temp.outputStream().use { output -> input.copyTo(output) }
-            }
-            check(temp.setExecutable(true, true)) { "Could not mark $fileName executable" }
-            if (!temp.renameTo(target)) {
-                target.delete()
-                check(temp.renameTo(target)) { "Could not install $fileName" }
-            }
+    private fun packagedExecutable(fileName: String): File {
+        val nativeDirectory = File(appContext.applicationInfo.nativeLibraryDir)
+        val executable = File(nativeDirectory, fileName)
+        check(executable.isFile && executable.length() > 1024) {
+            "$fileName is missing from the APK native library directory."
         }
-        check(target.canExecute()) { "$fileName is not executable on this Android device" }
-        return target
+        check(executable.canExecute()) {
+            "Android did not mark $fileName executable in nativeLibraryDir."
+        }
+        return executable
     }
-
     private fun readDiagnostics(child: Process) {
         stderrThread = Thread({
             try {

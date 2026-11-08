@@ -47,12 +47,12 @@ jobs:
 
       - name: Build PTY socket bridge for Android ARM64
         run: |
-          mkdir -p src/main/assets/bin
+          mkdir -p src/main/jniLibs/arm64-v8a
           NDK="$ANDROID_HOME/ndk/26.1.10909125"
           CC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android26-clang"
-          "$CC" -O2 -Wall -Wextra -fPIE -pie -Wl,-z,max-page-size=16384 src/main/cpp/sshbridge.c -o src/main/assets/bin/sshbridge
-          chmod 700 src/main/assets/bin/sshbridge
-          file src/main/assets/bin/sshbridge
+          "$CC" -O2 -Wall -Wextra -fPIE -pie -Wl,-z,max-page-size=16384 src/main/cpp/sshbridge.c -o src/main/jniLibs/arm64-v8a/libsshbridge.so
+          chmod 755 src/main/jniLibs/arm64-v8a/libsshbridge.so
+          file src/main/jniLibs/arm64-v8a/libsshbridge.so
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
@@ -62,6 +62,17 @@ jobs:
 
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug --stacktrace
+
+      - name: Verify packaged Android ARM64 executables
+        run: |
+          APK="$(find build/outputs/apk/debug -maxdepth 1 -name '*.apk' -print -quit)"
+          test -n "$APK"
+          mkdir -p "$RUNNER_TEMP/native-check"
+          for LIB in libcloudflared.so libsshbridge.so; do
+            unzip -p "$APK" "lib/arm64-v8a/$LIB" > "$RUNNER_TEMP/native-check/$LIB"
+            test -s "$RUNNER_TEMP/native-check/$LIB"
+            file "$RUNNER_TEMP/native-check/$LIB"
+          done
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v7

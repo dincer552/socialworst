@@ -63,15 +63,15 @@ apply_patch_once() {
   export CGO_CFLAGS="-O2 -fPIE"
   export CGO_LDFLAGS="-pie -Wl,-z,max-page-size=16384"
 
-  OUTPUT="${ROOT}/src/main/assets/bin/cloudflared"
+  OUTPUT="${ROOT}/src/main/jniLibs/arm64-v8a/libcloudflared.so"
   mkdir -p "$(dirname "${OUTPUT}")"
   go build -mod=vendor -trimpath \
     -ldflags="-s -w -buildid= -extldflags=-Wl,-z,max-page-size=16384" \
     -o "${OUTPUT}.tmp" ./cmd/cloudflared
   mv "${OUTPUT}.tmp" "${OUTPUT}"
-  chmod 700 "${OUTPUT}"
+  chmod 755 "${OUTPUT}"
 )
 
-file "${ROOT}/src/main/assets/bin/cloudflared"
-ls -lh "${ROOT}/src/main/assets/bin/cloudflared"
+file "${ROOT}/src/main/jniLibs/arm64-v8a/libcloudflared.so"
+ls -lh "${ROOT}/src/main/jniLibs/arm64-v8a/libcloudflared.so"
 echo "Built cloudflared ${VERSION} for Android arm64."
