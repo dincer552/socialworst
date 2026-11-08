@@ -1,0 +1,51 @@
+name: SSH Client - Cloudflare diagnostics
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    name: Check public DNS and Cloudflare edge
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Install DNS tools
+        run: sudo apt-get update && sudo apt-get install -y dnsutils
+
+      - name: Resolve SSH hostname
+        shell: bash
+        run: |
+          set -euo pipefail
+          HOST="ssh.dinceryuksek.com"
+          echo "=== DNS records for $HOST ==="
+          dig "$HOST" A +noall +answer
+          dig "$HOST" AAAA +noall +answer
+          dig "$HOST" CNAME +noall +answer
+          if ! getent ahosts "$HOST"; then
+            echo "::error::Hostname did not resolve from GitHub Actions."
+            exit 1
+          fi
+
+      - name: Check HTTPS edge response
+        shell: bash
+        run: |
+          set -uo pipefail
+          HOST="ssh.dinceryuksek.com"
+          echo "=== TLS/HTTPS response ==="
+          curl --connect-timeout 10 --max-time 20 -sS -D "$RUNNER_TEMP/headers.txt" -o "$RUNNER_TEMP/body.html" "https://$HOST/" || CURL_STATUS=$?
+          CURL_STATUS=${CURL_STATUS:-0}
+          sed -n '1,12p' "$RUNNER_TEMP/headers.txt" || true
+          echo "curl_exit=$CURL_STATUS"
+          if [ "$CURL_STATUS" -ne 0 ]; then
+            echo "::error::Could not establish HTTPS connection to the hostname."
+            exit 1
+          fi
+          echo "HTTPS request reached the hostname. A redirect or Access response is expected for an SSH-only hostname."
+
+      - name: Explain SSH test boundary
+        run: |
+          echo "This check validates public DNS and Cloudflare HTTPS edge reachability only."
+          echo "It does not authenticate to Cloudflare Access or prove the Azure SSH daemon accepts a key."
