@@ -15,4 +15,4 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "HattrickSSH"
+rootProject.name = "SSHClient"
