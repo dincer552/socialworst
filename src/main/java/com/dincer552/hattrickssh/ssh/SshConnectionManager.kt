@@ -59,7 +59,7 @@ class SshConnectionManager(context: Context) {
                 jsch.addIdentity("azure-rsa-key", privateKey, null, null)
 
                 val knownHosts = secureStorage.loadKnownHosts()
-                if (!knownHosts.isNullOrEmpty()) {
+                if (knownHosts != null && knownHosts.isNotEmpty()) {
                     ByteArrayInputStream(knownHosts).use { jsch.setKnownHosts(it) }
                 }
 
@@ -76,7 +76,7 @@ class SshConnectionManager(context: Context) {
                 sshSession.setConfig("PreferredAuthentications", "publickey")
                 sshSession.setConfig(
                     "StrictHostKeyChecking",
-                    if (knownHosts.isNullOrEmpty()) "ask" else "yes"
+                    if (knownHosts == null || knownHosts.isEmpty()) "ask" else "yes"
                 )
                 sshSession.setUserInfo(object : UserInfo {
                     override fun getPassphrase(): String? = null
