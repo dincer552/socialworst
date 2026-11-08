@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build and verify Android ARM64 APKs
+    name: Build and verify Android ARM64 APK
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -125,14 +125,13 @@ jobs:
           APK="$(find build/outputs/apk/release -maxdepth 1 -name '*.apk' -print -quit)"
           test -n "$APK"
           cp "$APK" build/outputs/apk/release/ssh-client.apk
-          cp "$APK" build/outputs/apk/release/hattrick-ssh.apk
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose build/outputs/apk/release/ssh-client.apk
 
       - name: Verify APK update certificate continuity
         if: steps.signing.outputs.configured == 'true' && github.ref == 'refs/heads/main'
         shell: bash
         run: |
-          OLD_APK_URL="$(curl -fsSL -H 'Accept: application/vnd.github+json' -H 'User-Agent: SSH-Client-CI' https://api.github.com/repos/dincer552/socialworst/releases/latest | jq -r '.assets[] | select(.name == "hattrick-ssh.apk") | .browser_download_url' | head -n 1)"
+          OLD_APK_URL="$(curl -fsSL -H 'Accept: application/vnd.github+json' -H 'User-Agent: SSH-Client-CI' https://api.github.com/repos/dincer552/socialworst/releases/latest | jq -r '.assets[] | select(.name == "ssh-client.apk") | .browser_download_url' | head -n 1)"
           test -n "$OLD_APK_URL"
           curl -fsSL "$OLD_APK_URL" -o "$RUNNER_TEMP/previous-ssh-client.apk"
           OLD_CERT="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$RUNNER_TEMP/previous-ssh-client.apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
@@ -150,7 +149,6 @@ jobs:
           generate_release_notes: true
           files: |
             build/outputs/apk/release/ssh-client.apk
-            build/outputs/apk/release/hattrick-ssh.apk
           fail_on_unmatched_files: true
 
       - name: Upload signed APK artifact
