@@ -42,7 +42,10 @@ object AppUpdateManager {
             val assets = release.optJSONArray("assets") ?: throw IOException("Release APK is missing")
             val assetUrl = (0 until assets.length()).asSequence()
                 .map { assets.getJSONObject(it) }
-                .firstOrNull { it.optString("name") == APK_ASSET_NAME }
+                .firstOrNull {
+                    val assetName = it.optString("name")
+                    assetName == APK_ASSET_NAME || assetName == "hattrick-ssh.apk"
+                }
                 ?.optString("browser_download_url")
                 ?.takeIf { it.startsWith("https://") }
                 ?: throw IOException("Release APK download URL is missing")
