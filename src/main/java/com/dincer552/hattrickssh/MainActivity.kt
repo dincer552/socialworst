@@ -1,5 +1,6 @@
 package com.dincer552.hattrickssh
 
+import android.app.Activity
 import android.app.DownloadManager
 import android.content.Intent
 import android.net.Uri
@@ -10,6 +11,8 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -20,30 +23,47 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.*
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dincer552.hattrickssh.security.SshKeyImportManager
+import com.dincer552.hattrickssh.ssh.AuthenticationMethod
+import com.dincer552.hattrickssh.ssh.SshServerProfile
+import com.dincer552.hattrickssh.ssh.SshServerProfileStore
+import com.google.android.play.core.appupdate.AppUpdateManager as PlayAppUpdateManager
+import com.google.android.play.core.appupdate.AppUpdateManagerFactory
+import com.google.android.play.core.appupdate.AppUpdateOptions
+import com.google.android.play.core.install.model.AppUpdateType
+import com.google.android.play.core.install.model.UpdateAvailability
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 private val AppBackground = Color(0xFF080D12)
 private val AppPanel = Color(0xFF121B24)
@@ -51,8 +71,19 @@ private val AppGreen = Color(0xFF38D98A)
 private val AppMuted = Color(0xFF91A1B2)
 
 class MainActivity : ComponentActivity() {
+    private lateinit var playUpdateManager: PlayAppUpdateManager
+    private lateinit var updateLauncher: ActivityResultLauncher<IntentSenderRequest>
+    private var playUpdateAvailable by mutableStateOf(false)
+    private var playUpdateStatus by mutableStateOf("Play Store güncellemeleri yönetir")
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        playUpdateManager = AppUpdateManagerFactory.create(this)
+        updateLauncher = registerForActivityResult(
+            ActivityResultContracts.StartIntentSenderForResult()
+        ) { result ->
+            if (result.resultCode != Activity.RESULT_OK) checkForPlayUpdate()
+        }
         setContent {
             MaterialTheme(
                 colorScheme = darkColorScheme(
@@ -64,26 +95,87 @@ class MainActivity : ComponentActivity() {
                 )
             ) {
                 MainScreen(
-                    onConnect = { startActivity(Intent(this, TerminalActivity::class.java)) }
+                    onConnect = { profile ->
+                        startActivity(
+                            Intent(this, TerminalActivity::class.java)
+                                .putExtra(TerminalActivity.EXTRA_PROFILE_ID, profile.id)
+                        )
+                    },
+                    playUpdateAvailable = playUpdateAvailable,
+                    playUpdateStatus = playUpdateStatus,
+                    onPlayUpdate = ::startPlayUpdate
                 )
             }
         }
+        if (BuildConfig.PLAY_DISTRIBUTION) checkForPlayUpdate()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (!BuildConfig.PLAY_DISTRIBUTION || !::playUpdateManager.isInitialized) return
+        playUpdateManager.appUpdateInfo.addOnSuccessListener { info ->
+            if (info.updateAvailability() == UpdateAvailability.DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS) {
+                launchImmediateUpdate(info)
+            }
+        }
+    }
+
+    private fun checkForPlayUpdate() {
+        playUpdateManager.appUpdateInfo
+            .addOnSuccessListener { info ->
+                playUpdateAvailable = info.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE &&
+                    info.isUpdateTypeAllowed(AppUpdateType.IMMEDIATE)
+                playUpdateStatus = if (playUpdateAvailable) "Google Play'de güncelleme var" else "Google Play sürümü güncel"
+            }
+            .addOnFailureListener { playUpdateStatus = "Güncelleme durumu şu an alınamıyor" }
+    }
+
+    private fun startPlayUpdate() {
+        playUpdateManager.appUpdateInfo
+            .addOnSuccessListener { info ->
+                if (info.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE &&
+                    info.isUpdateTypeAllowed(AppUpdateType.IMMEDIATE)
+                ) launchImmediateUpdate(info) else checkForPlayUpdate()
+            }
+            .addOnFailureListener { playUpdateStatus = "Google Play güncellemesi başlatılamadı" }
+    }
+
+    private fun launchImmediateUpdate(info: com.google.android.play.core.appupdate.AppUpdateInfo) {
+        playUpdateManager.startUpdateFlowForResult(
+            info,
+            updateLauncher,
+            AppUpdateOptions.newBuilder(AppUpdateType.IMMEDIATE).build()
+        )
     }
 }
 
 @Composable
-private fun MainScreen(onConnect: () -> Unit) {
+private fun MainScreen(
+    onConnect: (SshServerProfile) -> Unit,
+    playUpdateAvailable: Boolean,
+    playUpdateStatus: String,
+    onPlayUpdate: () -> Unit
+) {
     val context = LocalContext.current
+    val store = remember { SshServerProfileStore(context) }
     val keyManager = remember { SshKeyImportManager(context.applicationContext) }
-    var keyImported by remember { mutableStateOf(keyManager.hasPrivateKey()) }
-    var showSettings by remember { mutableStateOf(false) }
-    var availableUpdate by remember { mutableStateOf<ReleaseUpdate?>(null) }
-    var updateStatus by remember { mutableStateOf("Güncelleme kontrol ediliyor…") }
+    var profiles by remember { mutableStateOf(store.all()) }
+    var editingProfile by remember { mutableStateOf<SshServerProfile?>(null) }
+    var showEditor by remember { mutableStateOf(false) }
+    var deleteCandidate by remember { mutableStateOf<SshServerProfile?>(null) }
+    var keyProfileId by remember { mutableStateOf<String?>(null) }
+    var githubUpdate by remember { mutableStateOf<ReleaseUpdate?>(null) }
+    var githubUpdateStatus by remember { mutableStateOf("Güncelleme kontrol ediliyor…") }
     var updateError by remember { mutableStateOf<String?>(null) }
+    var updateCheckRequest by remember { mutableIntStateOf(0) }
     var downloadId by remember { mutableStateOf<Long?>(null) }
     var downloadPercent by remember { mutableIntStateOf(0) }
     var pendingInstallUri by remember { mutableStateOf<Uri?>(null) }
-    var updateCheckRequest by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(updateCheckRequest) {
+        store.migrateLegacyInstallIfNeeded()
+        profiles = store.all()
+    }
 
     val installPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -91,31 +183,39 @@ private fun MainScreen(onConnect: () -> Unit) {
         val uri = pendingInstallUri
         if (uri != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             context.packageManager.canRequestPackageInstalls()
-        ) {
-            openApkInstaller(context, uri)
-        } else if (uri != null) {
-            updateError = "APK kurulum izni verilmedi."
-        }
+        ) openApkInstaller(context, uri)
+        else if (uri != null) updateError = "APK kurulum izni verilmedi."
     }
 
-    LaunchedEffect(updateCheckRequest) {
-        try {
-            val update = AppUpdateManager.checkForUpdate()
-            availableUpdate = update
-            updateStatus = if (update == null) "Uygulama güncel" else "Yeni sürüm: ${update.versionName}"
-            updateError = null
-        } catch (error: Exception) {
-            updateStatus = "Güncelleme kontrol edilemedi"
-            updateError = error.message ?: "Bağlantı hatası"
+    val keyPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val profileId = keyProfileId
+        if (uri != null && profileId != null) {
+            keyManager.importFromUri(uri, profileId).onSuccess {
+                Toast.makeText(context, "SSH anahtarı güvenli şekilde kaydedildi.", Toast.LENGTH_SHORT).show()
+            }.onFailure { error ->
+                Toast.makeText(context, error.message ?: "SSH anahtarı içe aktarılamadı.", Toast.LENGTH_LONG).show()
+            }
+        }
+        keyProfileId = null
+    }
+
+    LaunchedEffect(Unit) {
+        if (!BuildConfig.PLAY_DISTRIBUTION) {
+            try {
+                githubUpdate = AppUpdateManager.checkForUpdate()
+                githubUpdateStatus = if (githubUpdate == null) "Uygulama güncel" else "Yeni sürüm ${githubUpdate?.versionName}"
+                updateError = null
+            } catch (error: Exception) {
+                githubUpdateStatus = "Güncelleme kontrol edilemedi"
+                updateError = error.message ?: "Ağ bağlantısı hatası"
+            }
         }
     }
 
     LaunchedEffect(downloadId) {
         val id = downloadId ?: return@LaunchedEffect
         while (true) {
-            val snapshot = withContext(Dispatchers.IO) {
-                AppUpdateManager.getDownloadSnapshot(context, id)
-            }
+            val snapshot = withContext(Dispatchers.IO) { AppUpdateManager.getDownloadSnapshot(context, id) }
             if (snapshot == null) {
                 updateError = "İndirme durumu okunamadı."
                 downloadId = null
@@ -124,220 +224,225 @@ private fun MainScreen(onConnect: () -> Unit) {
             downloadPercent = snapshot.progressPercent
             when (snapshot.status) {
                 DownloadManager.STATUS_SUCCESSFUL -> {
-                    val uri = withContext(Dispatchers.IO) {
-                        AppUpdateManager.getDownloadedUri(context, id)
-                    }
+                    val uri = withContext(Dispatchers.IO) { AppUpdateManager.getDownloadedUri(context, id) }
                     downloadId = null
-                    if (uri == null) {
-                        updateError = "İndirilen APK dosyası bulunamadı."
-                    } else {
+                    if (uri == null) updateError = "İndirilen APK bulunamadı."
+                    else {
                         pendingInstallUri = uri
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
                             !context.packageManager.canRequestPackageInstalls()
-                        ) {
-                            installPermissionLauncher.launch(
-                                Intent(
-                                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                                    Uri.parse("package:${context.packageName}")
-                                )
-                            )
-                        } else {
-                            openApkInstaller(context, uri)
-                        }
+                        ) installPermissionLauncher.launch(
+                            Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
+                        ) else openApkInstaller(context, uri)
                     }
                     break
                 }
                 DownloadManager.STATUS_FAILED -> {
-                    updateError = "APK indirilemedi. İnternet bağlantısını kontrol edip tekrar dene."
+                    updateError = "APK indirilemedi. Bağlantıyı kontrol edip tekrar deneyin."
                     downloadId = null
                     break
                 }
-                else -> {
-                    updateStatus = "İndiriliyor… %${downloadPercent}"
-                    delay(450)
-                }
+                else -> delay(500)
             }
         }
     }
 
-    val keyPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri != null) {
-            val result = keyManager.importFromUri(uri)
-            result.onSuccess {
-                keyImported = true
-                Toast.makeText(context, "SSH anahtarı güvenli şekilde kaydedildi.", Toast.LENGTH_SHORT).show()
-            }.onFailure { error ->
-                Toast.makeText(
-                    context,
-                    error.message ?: "SSH anahtarı içe aktarılamadı.",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
-        }
-    }
-
-    Surface(modifier = Modifier.fillMaxSize(), color = AppBackground) {
+    Surface(Modifier.fillMaxSize(), color = AppBackground) {
         Column(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column {
-                    Text("SSH CLIENT", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold)
-                    Text("Secure terminal connection", color = AppMuted, fontSize = 11.sp)
+                    Text("SSH CLIENT", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text("Sunucularınız", color = AppMuted, fontSize = 12.sp)
                 }
-                Text("SSH", color = AppGreen, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                OutlinedButton(onClick = { editingProfile = null; showEditor = true }) { Text("+ SUNUCU") }
             }
 
-            Spacer(Modifier.height(8.dp))
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(13.dp),
-                colors = CardDefaults.cardColors(containerColor = AppPanel)
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(7.dp)
-                ) {
-                    Text("AZURE LINUX VM", color = AppMuted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-                    Text(Constants.VM_NAME, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-                    Text(Constants.DEFAULT_HOST, color = AppMuted, fontSize = 12.sp)
-                    Row {
-                        Text("${Constants.DEFAULT_USERNAME}@${Constants.DEFAULT_PORT}", color = AppMuted, fontSize = 11.sp)
-                        Spacer(Modifier.width(12.dp))
-                        Text("Cloudflare Access", color = AppGreen, fontSize = 11.sp)
+                if (profiles.isEmpty()) {
+                    item {
+                        Text(
+                            "Henüz sunucu eklenmedi. Host, kullanıcı ve kimlik doğrulama bilgilerinizi ekleyerek başlayın.",
+                            color = AppMuted,
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+                items(profiles, key = { it.id }) { profile ->
+                    Card(colors = CardDefaults.cardColors(containerColor = AppPanel), shape = RoundedCornerShape(10.dp)) {
+                        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Text(profile.name, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                            Text("${profile.username}@${profile.host}:${profile.port}", color = AppMuted, fontSize = 11.sp)
+                            if (profile.description.isNotBlank()) Text(profile.description, color = AppMuted, fontSize = 10.sp)
+                            Text(
+                                "${if (profile.authenticationMethod == AuthenticationMethod.PRIVATE_KEY) "Private key" else "Parola"} • ${if (profile.useCloudflareAccess) "Cloudflare Access" else "Doğrudan SSH"}",
+                                color = AppGreen,
+                                fontSize = 10.sp
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Button(
+                                    onClick = {
+                                        if (profile.authenticationMethod == AuthenticationMethod.PRIVATE_KEY && !keyManager.hasPrivateKey(profile.id)) {
+                                            Toast.makeText(context, "Bu profil için önce private key seçin.", Toast.LENGTH_LONG).show()
+                                        } else onConnect(profile)
+                                    },
+                                    modifier = Modifier.weight(1f).height(40.dp),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp)
+                                ) { Text("BAĞLAN", fontSize = 10.sp) }
+                                if (profile.authenticationMethod == AuthenticationMethod.PRIVATE_KEY) {
+                                    OutlinedButton(
+                                        onClick = { keyProfileId = profile.id; keyPicker.launch(arrayOf("*/*")) },
+                                        modifier = Modifier.weight(1f).height(40.dp),
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp)
+                                    ) { Text("ANAHTAR", fontSize = 9.sp) }
+                                }
+                                TextButton(onClick = { editingProfile = profile; showEditor = true }) { Text("DÜZENLE", fontSize = 9.sp) }
+                                TextButton(onClick = { deleteCandidate = profile }) { Text("SİL", color = Color(0xFFFF8A80), fontSize = 9.sp) }
+                            }
+                        }
                     }
                 }
             }
-
-            Text(
-                if (keyImported) "●  RSA anahtarı hazır" else "●  SSH anahtarı gerekli",
-                color = if (keyImported) AppGreen else Color(0xFFFFC36B),
-                fontSize = 12.sp
-            )
-
-            Button(
-                onClick = {
-                    if (keyImported) onConnect()
-                    else Toast.makeText(context, "Önce Azure'dan indirdiğin .pem dosyasını seç.", Toast.LENGTH_LONG).show()
-                },
-                enabled = keyImported,
-                modifier = Modifier.fillMaxWidth().height(54.dp),
-                shape = RoundedCornerShape(10.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = AppGreen,
-                    contentColor = Color(0xFF06130C),
-                    disabledContainerColor = Color(0xFF35423B),
-                    disabledContentColor = Color(0xFF9DA9A1)
-                )
-            ) {
-                Text("BAĞLAN", fontSize = 15.sp, fontWeight = FontWeight.Bold)
-            }
-
-            OutlinedButton(
-                onClick = { keyPicker.launch(arrayOf("*/*")) },
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Text(if (keyImported) "SSH KEY DEĞİŞTİR" else "SSH PRIVATE KEY SEÇ", fontSize = 12.sp)
-            }
-
-            OutlinedButton(
-                onClick = { showSettings = true },
-                modifier = Modifier.fillMaxWidth().height(46.dp),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Text("BAĞLANTI AYARLARI", fontSize = 11.sp)
-            }
-
-            Text(
-                "Sürüm ${BuildConfig.VERSION_NAME} • $updateStatus",
-                color = if (availableUpdate != null) AppGreen else AppMuted,
-                fontSize = 10.sp
-            )
-
-            if (availableUpdate != null && downloadId == null) {
+            val updateStatus = if (BuildConfig.PLAY_DISTRIBUTION) playUpdateStatus else githubUpdateStatus
+            Text("${BuildConfig.VERSION_NAME} • $updateStatus", color = AppMuted, fontSize = 10.sp)
+            if (BuildConfig.PLAY_DISTRIBUTION && playUpdateAvailable) {
+                OutlinedButton(onClick = onPlayUpdate, modifier = Modifier.fillMaxWidth()) { Text("PLAY STORE'DAN GÜNCELLE") }
+            } else if (!BuildConfig.PLAY_DISTRIBUTION && githubUpdate != null && downloadId == null) {
                 OutlinedButton(
                     onClick = {
                         updateError = null
-                        downloadPercent = 0
-                        try {
-                            downloadId = AppUpdateManager.enqueueDownload(context, availableUpdate!!)
-                        } catch (error: Exception) {
-                            updateError = error.message ?: "İndirme başlatılamadı."
-                        }
+                        downloadId = AppUpdateManager.enqueueDownload(context, githubUpdate!!)
                     },
-                    modifier = Modifier.fillMaxWidth().height(42.dp),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Text("GÜNCELLE • ${availableUpdate!!.versionName}", fontSize = 11.sp)
-                }
-            } else if (availableUpdate == null && updateError != null) {
-                OutlinedButton(
-                    onClick = {
-                        updateStatus = "Güncelleme kontrol ediliyor…"
-                        updateError = null
-                        updateCheckRequest++
-                    },
-                    modifier = Modifier.fillMaxWidth().height(38.dp),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Text("TEKRAR DENE", fontSize = 10.sp)
-                }
-            }
-
-            if (downloadId != null) {
-                LinearProgressIndicator(
-                    progress = { downloadPercent / 100f },
                     modifier = Modifier.fillMaxWidth()
-                )
-                Text("APK indiriliyor: %${downloadPercent}", color = AppGreen, fontSize = 10.sp)
+                ) { Text("İMZALI APK'Yİ GÜNCELLE • ${githubUpdate!!.versionName}") }
+            } else if (!BuildConfig.PLAY_DISTRIBUTION && updateError != null && downloadId == null) {
+                OutlinedButton(
+                    onClick = { updateError = null; updateCheckRequest++ },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("GÜNCELLEMEYİ TEKRAR DENE") }
             }
-            updateError?.let {
-                Text(it, color = Color(0xFFFF8A80), fontSize = 10.sp)
-            }
-
-            Spacer(Modifier.weight(1f))
-            Text(
-                "Private key cihaz içinde Android Keystore ile şifrelenir. GitHub'a yüklenmez.",
-                color = AppMuted,
-                fontSize = 10.sp,
-                lineHeight = 14.sp
-            )
+            if (downloadId != null) LinearProgressIndicator({ downloadPercent / 100f }, Modifier.fillMaxWidth())
+            updateError?.let { Text(it, color = Color(0xFFFF8A80), fontSize = 11.sp) }
+            Text("Parolalar ve profiller cihazda şifreli saklanır. Private key GitHub'a gönderilmez.", color = AppMuted, fontSize = 10.sp)
         }
     }
 
-    if (showSettings) {
+    if (showEditor) {
+        ProfileEditor(
+            initial = editingProfile,
+            onDismiss = { showEditor = false },
+            onSave = { profile ->
+                if (store.save(profile)) {
+                    profiles = store.all()
+                    showEditor = false
+                } else Toast.makeText(context, "Profil güvenli şekilde kaydedilemedi.", Toast.LENGTH_LONG).show()
+            }
+        )
+    }
+
+    deleteCandidate?.let { profile ->
         AlertDialog(
-            onDismissRequest = { showSettings = false },
-            title = { Text("Bağlantı ayarları", fontSize = 17.sp) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text("Host: ${Constants.DEFAULT_HOST}", fontSize = 12.sp)
-                    Text("Port: ${Constants.DEFAULT_PORT}", fontSize = 12.sp)
-                    Text("User: ${Constants.DEFAULT_USERNAME}", fontSize = 12.sp)
-                    Text("Transport: Cloudflare Access + SSH", fontSize = 12.sp)
-                }
+            onDismissRequest = { deleteCandidate = null },
+            title = { Text("Sunucu silinsin mi?") },
+            text = { Text("${profile.name} profili ve bu profile ait şifrelenmiş anahtar cihazdan silinecek.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (store.delete(profile.id)) profiles = store.all()
+                    else Toast.makeText(context, "Profil silinemedi.", Toast.LENGTH_LONG).show()
+                    deleteCandidate = null
+                }) { Text("Sil") }
             },
-            confirmButton = { Button(onClick = { showSettings = false }) { Text("Tamam") } },
-            containerColor = AppPanel
+            dismissButton = { TextButton(onClick = { deleteCandidate = null }) { Text("İptal") } }
         )
     }
 }
 
+@Composable
+private fun ProfileEditor(
+    initial: SshServerProfile?,
+    onDismiss: () -> Unit,
+    onSave: (SshServerProfile) -> Unit
+) {
+    var name by remember(initial?.id) { mutableStateOf(initial?.name.orEmpty()) }
+    var host by remember(initial?.id) { mutableStateOf(initial?.host.orEmpty()) }
+    var port by remember(initial?.id) { mutableStateOf(initial?.port?.toString() ?: "22") }
+    var username by remember(initial?.id) { mutableStateOf(initial?.username.orEmpty()) }
+    var description by remember(initial?.id) { mutableStateOf(initial?.description.orEmpty()) }
+    var password by remember(initial?.id) { mutableStateOf(initial?.password.orEmpty()) }
+    var method by remember(initial?.id) { mutableStateOf(initial?.authenticationMethod ?: AuthenticationMethod.PRIVATE_KEY) }
+    var cloudflare by remember(initial?.id) { mutableStateOf(initial?.useCloudflareAccess ?: false) }
+    var error by remember(initial?.id) { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (initial == null) "SSH sunucusu ekle" else "Sunucuyu düzenle") },
+        text = {
+            Column(
+                Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                OutlinedTextField(name, { name = it }, label = { Text("Sunucu adı") }, singleLine = true)
+                OutlinedTextField(host, { host = it }, label = { Text("Host / IP") }, singleLine = true)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedTextField(port, { port = it.filter(Char::isDigit).take(5) }, label = { Text("Port") }, modifier = Modifier.weight(0.7f), singleLine = true)
+                    OutlinedTextField(username, { username = it }, label = { Text("Kullanıcı adı") }, modifier = Modifier.weight(1.3f), singleLine = true)
+                }
+                OutlinedTextField(description, { description = it }, label = { Text("Açıklama (isteğe bağlı)") }, singleLine = true)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { method = AuthenticationMethod.PRIVATE_KEY }) { Text("Private key") }
+                    TextButton(onClick = { method = AuthenticationMethod.PASSWORD }) { Text("Parola") }
+                }
+                if (method == AuthenticationMethod.PASSWORD) {
+                    OutlinedTextField(password, { password = it }, label = { Text("SSH parolası") }, visualTransformation = PasswordVisualTransformation(), singleLine = true)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = cloudflare, onCheckedChange = { cloudflare = it })
+                    Text("Cloudflare Access proxy kullan", color = AppMuted, fontSize = 12.sp)
+                }
+                error?.let { Text(it, color = Color(0xFFFF8A80), fontSize = 11.sp) }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val parsedPort = port.toIntOrNull()
+                error = when {
+                    name.isBlank() -> "Sunucu adı gerekli."
+                    host.isBlank() || host.any(Char::isWhitespace) -> "Geçerli bir host/IP girin."
+                    parsedPort == null || parsedPort !in 1..65535 -> "Port 1–65535 arasında olmalı."
+                    username.isBlank() -> "Kullanıcı adı gerekli."
+                    method == AuthenticationMethod.PASSWORD && password.isBlank() -> "SSH parolası gerekli."
+                    else -> null
+                }
+                if (error == null) onSave(
+                    SshServerProfile(
+                        id = initial?.id ?: java.util.UUID.randomUUID().toString(),
+                        name = name.trim(),
+                        host = host.trim(),
+                        port = parsedPort!!,
+                        username = username.trim(),
+                        authenticationMethod = method,
+                        password = password,
+                        description = description.trim(),
+                        useCloudflareAccess = cloudflare
+                    )
+                )
+            }) { Text("Kaydet") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("İptal") } },
+        containerColor = AppPanel
+    )
+}
 
 private fun openApkInstaller(context: android.content.Context, apkUri: Uri) {
-    val installIntent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
+    val intent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
         data = apkUri
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
     }
-    context.startActivity(installIntent)
+    context.startActivity(intent)
 }

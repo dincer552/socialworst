@@ -1,89 +1,55 @@
-# Hattrick SSH
+# SSH Client for Android
 
-A minimal Android SSH client for connecting to a personal Azure Linux VM through Cloudflare Access and Cloudflare Tunnel.
+A native Android SSH client with saved server profiles, an interactive terminal and optional Cloudflare Access transport. The app uses SSH/JSch and the Termux terminal emulator; it does not simulate shell commands.
 
-## Current server profile
+## Current implementation
 
-- Host: `ssh.dinceryuksek.com`
-- Port: `22`
-- User: `azureuser`
-- VM label: `hattrick-vm-uks`
-- Authentication: user-imported RSA private key
-- Transport: Cloudflare Access `cloudflared access ssh --hostname` as an SSH stdio ProxyCommand
-- Android package: `com.dincer552.hattrickssh`
-- Minimum Android: API 26
-- Native ABI: `arm64-v8a`
+- Application ID: `com.dincer552.hattrickssh` (kept stable for existing installations).
+- Minimum Android: API 26; Play release target: API 36.
+- ARM64 native payloads: Cloudflare `cloudflared` and the PTY socket bridge.
+- Authentication: per-profile SSH private key or password. Private keys and profile data are encrypted with AES-GCM using a non-exportable Android Keystore key.
+- Cloudflare Access: optional per profile. Direct SSH is supported without `cloudflared`.
+- Backups: app backup is disabled; sensitive app files are excluded from extraction and device transfer.
+- Updates: GitHub-installed APK builds use signed GitHub Release APK updates. The Play flavor uses Google Play in-app updates and does not request `REQUEST_INSTALL_PACKAGES`.
+- Existing installations migrate the previous single-server profile and encrypted key on first launch after upgrade; fresh installs start with an empty server list.
 
-## Architecture
+Cloudflare/PTY execution has only been cross-compiled and packaged in CI so far. It must still be verified on a real ARM64 Android device before describing that path as operational.
 
-1. The app imports a PEM/OpenSSH private key from Android's document picker.
-2. The key is encrypted with AES-256-GCM using a non-exportable Android Keystore key. StrongBox is used when available and supported; otherwise Android Keystore is used.
-3. The app starts the Android ARM64 `cloudflared` executable packaged in the APK under `jniLibs/arm64-v8a` and extracted by Android to `ApplicationInfo.nativeLibraryDir`. stdin/stdout form the SSH proxy byte stream; stderr carries diagnostics and the Cloudflare login URL.
-4. The SSH library (mwiede JSch) connects using public-key authentication and verifies/pins the server's SSH host key in encrypted app-private storage.
-5. An Android ARM64 PTY bridge, also packaged under `jniLibs/arm64-v8a`, connects a local loopback socket to the Termux VT terminal view. The SSH channel is a real interactive shell with an `xterm-256color` PTY.
+## Build layout
 
-The app does not use an HTTP/WebView terminal and does not send shell commands through a fake command field. The initial connection timeout is three minutes to allow interactive Cloudflare Access login.
+The active Android application is the repository-root Gradle project and `src/main`. The historical `app/` directory is not included in `settings.gradle.kts` and is not part of the build.
 
-## First run
+Build the GitHub debug APK:
 
-1. Install the debug APK from the GitHub Actions artifact.
-2. Open **SSH PRIVATE KEY SEÇ** and select the RSA private-key file downloaded from Azure.
-3. Tap **BAĞLAN**.
-4. If Cloudflare Access asks for browser authentication, complete the sign-in and return to the app.
-5. On the first SSH connection, inspect the server host-key fingerprint and accept only after verifying it against a trusted source.
-6. Use the terminal and the shortcut row for Esc, Tab, Ctrl+C, Ctrl+D, arrows and Enter.
-
-The private key must never be committed to this repository, a GitHub Actions secret, or an app log. The initial importer targets unencrypted Azure PEM/OpenSSH private keys; encrypted keys that require a passphrase are not yet supported.
-
-## Build
-
-GitHub Actions builds the native components and the Android debug APK on pushes to `main` and on manual workflow dispatch.
-
-The workflow:
-- Installs JDK 17, Android SDK/NDK and Go.
-- Builds Cloudflare's `cloudflared` source for `GOOS=android GOARCH=arm64 CGO_ENABLED=1`.
-- Compiles `src/main/cpp/sshbridge.c` as `libsshbridge.so` for Android ARM64.
-- Runs `gradle assembleDebug`.
-- Publishes `build/outputs/apk/debug/*.apk` as the `hattrick-ssh-debug-apk` artifact.
-
-To build locally, install JDK 17, Android SDK (API 35), NDK 26.1.10909125, Go 1.27.3+, Git and Patch. Then run:
-
-```bash
+```sh
 scripts/build-cloudflared-android.sh
 mkdir -p src/main/jniLibs/arm64-v8a
 NDK="$ANDROID_HOME/ndk/26.1.10909125"
 CC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android26-clang"
 "$CC" -O2 -Wall -Wextra -fPIE -pie -Wl,-z,max-page-size=16384 \
   src/main/cpp/sshbridge.c -o src/main/jniLibs/arm64-v8a/libsshbridge.so
-gradle assembleDebug
+gradle assembleGithubDebug
 ```
 
-## Cloudflare notes
+The GitHub Actions workflow builds the native ARM64 payloads, an unsigned debug APK, and—when the signing secrets are configured—a signed GitHub APK plus a signed Play AAB.
 
-Cloudflare's documented SSH pattern is to use `cloudflared access ssh --hostname <host>` as the SSH client's stdio proxy. It is not a local TCP forwarder and does not use `--url ssh://localhost:<port>`.
+## Signing and distribution
 
-The Android patch delegates opening the interactive login URL to the host Android app. Access credentials and the cloudflared config are stored inside the app-private files directory, which is excluded from Android backup. Executable code is not copied into that writable directory: Android 10+ blocks `exec()` from a target-29+ app's writable home. Both executables are packaged as ARM64 native payloads and extracted by Package Manager to `ApplicationInfo.nativeLibraryDir`. Gradle's `jniLibs.useLegacyPackaging = true` requests filesystem extraction.
+GitHub repository secrets:
 
-The app does not modify the Cloudflare Tunnel, DNS, Access application, firewall or VM configuration.
+- `ANDROID_KEYSTORE_BASE64`: base64 encoding of the existing persistent JKS.
+- `ANDROID_KEYSTORE_PASSWORD`: password for the JKS and `hattrickssh` alias.
 
-## Important test status
+Do not generate a replacement keystore, commit key material, or change the application ID. The GitHub APK update path requires the same signing certificate used for previously distributed APKs. Before publishing to Play, verify the JKS certificate against the currently distributed APK and configure Play App Signing so existing installations remain updatable. Play upload is not automated yet: the workflow produces the AAB for review/upload in Play Console.
 
-A successful APK build only proves compilation and packaging. It does not prove that Android can launch both packaged native executables or that Cloudflare Access and SSH authentication work on the device. Those steps must be tested on a real Android ARM64 phone before calling the client operational.
+## Privacy
 
-## Third-party components
+See [PRIVACY_POLICY.md](./PRIVACY_POLICY.md). No advertising or analytics SDK is currently configured. Network traffic is used for the user's SSH connection, optional Cloudflare Access, and—only in the GitHub APK flavor—GitHub Release update checks/downloads.
 
-See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for component sources and licenses.
+## Store submission work still required
 
-
-## In-app updates
-
-The app checks the latest public GitHub Release whenever its main screen opens. A new APK is downloaded through Android DownloadManager with visible progress, then Android's package installer asks the user to approve the update.
-
-GitHub Actions signs published APKs with a persistent CI key so Android accepts later APKs as updates. Never commit the signing key to this public repository.
-
-### Required repository secrets
-
-- `ANDROID_KEYSTORE_BASE64`: Base64-encoded JKS keystore.
-- `ANDROID_KEYSTORE_PASSWORD`: keystore password.
-
-Create the key once with `keytool -genkeypair -v -keystore hattrick-ssh-signing.jks -alias hattrickssh -keyalg RSA -keysize 2048 -validity 10000`. Use the same password for the keystore and key (press Enter at the key-password prompt). Never replace this key after the first signed APK is published.
+- Verify the signing certificate and upload the Play AAB to an internal test track.
+- Test profile CRUD, password/key authentication, direct SSH, terminal lifecycle, and optional Cloudflare Access on supported Android devices.
+- Complete Play Console identity, app content, Data safety and target-audience declarations.
+- Provide a public privacy policy URL, store listing text, screenshots, feature graphic, and support contact.
+- Review open-source notices in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).

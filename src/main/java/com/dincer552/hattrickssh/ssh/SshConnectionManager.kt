@@ -40,9 +40,7 @@ class SshConnectionManager(context: Context) {
     }
 
     fun connect(
-        host: String = Constants.DEFAULT_HOST,
-        port: Int = Constants.DEFAULT_PORT,
-        username: String = Constants.DEFAULT_USERNAME,
+        profile: SshServerProfile,
         callback: SshCallback
     ) {
         callback.onConnecting()
@@ -52,28 +50,38 @@ class SshConnectionManager(context: Context) {
                 closed.set(false)
                 check(!connected.get()) { "An SSH session is already active." }
 
-                privateKey = secureStorage.loadPrivateKey()
-                    ?: error("SSH private key is not imported. Select your .pem file first.")
-
                 val jsch = JSch()
-                jsch.addIdentity("azure-rsa-key", privateKey, null, null)
+                if (profile.authenticationMethod == AuthenticationMethod.PRIVATE_KEY) {
+                    privateKey = secureStorage.loadPrivateKey(profile.id)
+                        ?: error("SSH private key is not imported for this server profile.")
+                    jsch.addIdentity("ssh-key-${profile.id}", privateKey, null, null)
+                } else {
+                    require(profile.password.isNotEmpty()) { "SSH password is required for this profile." }
+                }
 
                 val knownHosts = secureStorage.loadKnownHosts()
                 if (knownHosts != null && knownHosts.isNotEmpty()) {
                     ByteArrayInputStream(knownHosts).use { jsch.setKnownHosts(it) }
                 }
 
-                val tunnel = CloudflareTunnelManager(
-                    appContext,
-                    onAuthUrl = { callback.onAuthRequired(it) },
-                    onDiagnostic = { callback.onDiagnostic(it) }
-                )
-                cloudflare = tunnel
-
-                val sshSession = jsch.getSession(username, host, port)
+                val sshSession = jsch.getSession(profile.username, profile.host, profile.port)
                 session = sshSession
-                sshSession.setProxy(tunnel.createSshProxy())
-                sshSession.setConfig("PreferredAuthentications", "publickey")
+                if (profile.useCloudflareAccess) {
+                    val tunnel = CloudflareTunnelManager(
+                        appContext,
+                        onAuthUrl = { callback.onAuthRequired(it) },
+                        onDiagnostic = { callback.onDiagnostic(it) }
+                    )
+                    cloudflare = tunnel
+                    sshSession.setProxy(tunnel.createSshProxy())
+                }
+                sshSession.setConfig(
+                    "PreferredAuthentications",
+                    if (profile.authenticationMethod == AuthenticationMethod.PRIVATE_KEY) "publickey" else "password"
+                )
+                if (profile.authenticationMethod == AuthenticationMethod.PASSWORD) {
+                    sshSession.setPassword(profile.password)
+                }
                 sshSession.setConfig(
                     "StrictHostKeyChecking",
                     if (knownHosts == null || knownHosts.isEmpty()) "ask" else "yes"

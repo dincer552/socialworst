@@ -1,12 +1,7 @@
 package com.dincer552.hattrickssh
 
 object Constants {
-    const val TAG = "HattrickSSH"
-
-    const val DEFAULT_HOST = "ssh.dinceryuk.com"
-    const val DEFAULT_PORT = 22
-    const val DEFAULT_USERNAME = "azureuser"
-    const val VM_NAME = "hattrick-vm-uks"
+    const val TAG = "SshClient"
 
     const val SSH_KEY_DIR = "ssh_keys"
     const val SSH_KEY_FILENAME = "id_rsa.enc"

@@ -5,9 +5,9 @@
 Cloudflare's documented SSH client pattern is an SSH ProxyCommand:
 
 ```ssh-config
-Host azure-vm
-    HostName ssh.dinceryuk.com
-    User azureuser
+Host my-server
+    HostName <configured-host>
+    User <configured-user>
     ProxyCommand cloudflared access ssh --hostname %h
 ```
 

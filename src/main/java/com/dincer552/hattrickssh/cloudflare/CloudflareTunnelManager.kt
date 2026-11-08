@@ -62,7 +62,7 @@ class CloudflareTunnelManager(
         process = child
         processInput = child.inputStream
         processOutput = child.outputStream
-        readDiagnostics(child)
+        readDiagnostics(child, hostname)
     }
 
     private fun packagedExecutable(fileName: String): File {
@@ -76,13 +76,13 @@ class CloudflareTunnelManager(
         }
         return executable
     }
-    private fun readDiagnostics(child: Process) {
+    private fun readDiagnostics(child: Process, hostname: String) {
         stderrThread = Thread({
             try {
                 child.errorStream.bufferedReader(Charsets.UTF_8).useLines { lines ->
                     lines.forEach { line ->
                         val url = AUTH_URL.find(line)?.value?.trimEnd('.', ',', ')', ']', '}')
-                        if (url != null && isCloudflareAccessUrl(url)) {
+                        if (url != null && isCloudflareAccessUrl(url, hostname)) {
                             onAuthUrl(Uri.parse(url))
                         } else {
                             onDiagnostic(sanitizeDiagnostic(line))
@@ -98,7 +98,7 @@ class CloudflareTunnelManager(
         }
     }
 
-    private fun isCloudflareAccessUrl(value: String): Boolean = try {
+    private fun isCloudflareAccessUrl(value: String, hostname: String): Boolean = try {
         val uri = Uri.parse(value)
         val host = uri.host.orEmpty()
         val path = uri.path.orEmpty()
@@ -107,7 +107,7 @@ class CloudflareTunnelManager(
             host == "cloudflareaccess.org" ||
             host.endsWith(".cloudflareaccess.org")
         val configuredTunnelAccessPath =
-            host.equals(Constants.DEFAULT_HOST, ignoreCase = true) &&
+            host.equals(hostname, ignoreCase = true) &&
                 path.startsWith("/cdn-cgi/access/")
         uri.scheme == "https" && (officialAccessHost || configuredTunnelAccessPath)
     } catch (_: Exception) {

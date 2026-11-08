@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">SSH Client</string>
-    <string name="server_name">ssh.dinceryuksek.com</string>
+    <string name="server_name">Server</string>
     <string name="server_port">22</string>
-    <string name="username">azureuser</string>
+    <string name="username">User</string>
     <string name="status_connected">Bağlı</string>
     <string name="status_disconnected">Bağlı değil</string>
     <string name="status_connecting">Bağlanıyor…</string>

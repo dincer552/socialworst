@@ -70,6 +70,11 @@ class SecureKeyStorage(private val context: Context) {
 
     private fun file(name: String) = File(directory, name)
 
+    private fun profileKeyFile(profileId: String): String {
+        require(profileId.matches(Regex("[a-fA-F0-9-]{36}"))) { "Invalid profile identifier" }
+        return "profile-$profileId.key.enc"
+    }
+
     @Synchronized
     private fun store(name: String, cleartext: ByteArray): Boolean = try {
         require(cleartext.isNotEmpty())
@@ -118,4 +123,17 @@ class SecureKeyStorage(private val context: Context) {
     fun storeKnownHosts(bytes: ByteArray) = store(Constants.KNOWN_HOSTS_FILENAME, bytes)
     fun loadKnownHosts() = load(Constants.KNOWN_HOSTS_FILENAME)
     fun deleteKnownHosts() = !file(Constants.KNOWN_HOSTS_FILENAME).exists() || file(Constants.KNOWN_HOSTS_FILENAME).delete()
+
+    fun storePrivateKey(profileId: String, keyBytes: ByteArray) = store(profileKeyFile(profileId), keyBytes)
+    fun loadPrivateKey(profileId: String) = load(profileKeyFile(profileId))
+    fun hasPrivateKey(profileId: String) = file(profileKeyFile(profileId)).let { it.isFile && it.length() > 28 }
+    fun deletePrivateKey(profileId: String) =
+        !file(profileKeyFile(profileId)).exists() || file(profileKeyFile(profileId)).delete()
+
+    fun storeEncryptedProfileData(bytes: ByteArray): Boolean = try {
+        store("profiles.enc", bytes)
+    } finally {
+        bytes.fill(0)
+    }
+    fun loadEncryptedProfileData() = load("profiles.enc")
 }

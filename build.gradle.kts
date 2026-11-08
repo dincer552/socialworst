@@ -1,5 +1,5 @@
 plugins {
-    id("com.android.application") version "8.7.3"
+    id("com.android.application") version "8.9.1"
     id("org.jetbrains.kotlin.android") version "2.0.21"
     id("org.jetbrains.kotlin.plugin.compose") version "2.0.21"
 }
@@ -10,12 +10,12 @@ val ciSigningStorePath = System.getenv("ANDROID_KEYSTORE_PATH")
 
 android {
     namespace = "com.dincer552.hattrickssh"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.dincer552.hattrickssh"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = buildVersionCode
         versionName = buildVersionName
 
@@ -25,8 +25,20 @@ android {
         }
     }
 
+    flavorDimensions += "distribution"
+    productFlavors {
+        create("github") {
+            dimension = "distribution"
+            buildConfigField("boolean", "PLAY_DISTRIBUTION", "false")
+        }
+        create("play") {
+            dimension = "distribution"
+            buildConfigField("boolean", "PLAY_DISTRIBUTION", "true")
+        }
+    }
+
     signingConfigs {
-        create("githubUpdate") {
+        create("playUpload") {
             if (!ciSigningStorePath.isNullOrBlank()) {
                 storeFile = file(ciSigningStorePath)
                 storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
@@ -39,12 +51,12 @@ android {
     buildTypes {
         debug {
             versionNameSuffix = "-debug"
-            if (!ciSigningStorePath.isNullOrBlank()) {
-                signingConfig = signingConfigs.getByName("githubUpdate")
-            }
         }
         release {
             isMinifyEnabled = false
+            if (!ciSigningStorePath.isNullOrBlank()) {
+                signingConfig = signingConfigs.getByName("playUpload")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -91,6 +103,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    implementation("com.google.android.play:app-update:2.1.0")
 
     // Maintained JSch fork: RSA/SHA-2 and current SSH algorithm support.
     implementation("com.github.mwiede:jsch:2.28.8")

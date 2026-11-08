@@ -1,51 +1,37 @@
-# Hattrick SSH — ordered validation plan
+# Android SSH Client release checklist
 
-This checklist is the release gate. A source-code implementation is not marked complete until its stated test has passed.
+## Repository and product baseline
 
-## Repository and build
+- [x] Preserve application ID `com.dincer552.hattrickssh` and the existing Android Keystore alias.
+- [x] Replace hard-coded personal server UI/defaults with user-defined connection profiles.
+- [x] Support multiple profiles with private-key or SSH-password authentication.
+- [x] Encrypt profile records/passwords and per-profile private keys in app-private storage using Android Keystore AES-GCM.
+- [x] Make Cloudflare Access an optional profile transport; leave normal SSH direct.
+- [x] Separate GitHub APK and Google Play AAB distribution flavors.
+- [x] Remove APK install permission from the Play manifest; retain signed APK updates for the GitHub flavor.
+- [x] Set Play target API to 36 and update the Android Gradle Plugin/Gradle combination.
+- [ ] Build debug/release APK and Play AAB; validate the CI workflow and signed artifacts.
+- [ ] Compare the configured JKS signing certificate with the currently distributed APK certificate.
 
-- [x] Inspect the existing private repository and retain the pre-existing scaffold.
-- [x] Confirm app ID `com.dincer552.hattrickssh`, Kotlin/Gradle project, minSdk 26 and ARM64 ABI.
-- [x] Build Cloudflare cloudflared for `GOOS=android GOARCH=arm64 CGO_ENABLED=1` in GitHub Actions.
-- [x] Compile the native PTY bridge for Android ARM64 in GitHub Actions.
-- [x] Fix the Kotlin nullable host-key byte-array compilation error.
-- [x] Package native executables as APK `jniLibs/arm64-v8a` payloads and use `nativeLibraryDir` instead of writable `filesDir`.
-- [ ] Confirm the current commit's APK build and verify both executable entries are present in the APK.
+## Device and protocol acceptance
 
-## Android device prototype — required before real SSH testing
+- [ ] Exercise profile create/edit/delete and confirm persistence after restart.
+- [ ] Import a distinct private key for two profiles and confirm profile isolation.
+- [ ] Test key and password SSH authentication against a controlled SSH server.
+- [ ] Confirm first host-key acceptance and rejection of changed host keys.
+- [ ] Test real PTY shell, ANSI colors, output, resize, scroll, long input, keyboard, and disconnect/reconnect.
+- [ ] Test normal direct SSH independently of Cloudflare.
+- [ ] On a real ARM64 Android phone, test cloudflared execution, browser Access login, token persistence, and SSH over the Tunnel.
+- [ ] Confirm neither credentials nor key material appear in logs.
+- [ ] Test API 26+ compatibility and 16 KB page-size native payload alignment.
 
-- [ ] Install the debug APK on an ARM64 Android phone (API 26+).
-- [ ] Confirm `ProcessBuilder` starts cloudflared from `nativeLibraryDir`.
-- [ ] Confirm cloudflared stdin/stdout carry a byte stream and stderr is parsed independently.
-- [ ] Confirm the PTY bridge starts through Termux `TerminalSession` from `nativeLibraryDir`.
-- [ ] Confirm the localhost socket bridge connects both directions without truncation or deadlock.
+## Google Play submission
 
-## Access and SSH
+- [ ] Upload the signed Play AAB to an internal test track and validate Play in-app updates.
+- [ ] Confirm Play App Signing uses a certificate compatible with the already distributed APKs if migration of those installs is required.
+- [ ] Complete store listing, support contact, privacy policy URL, Data safety and app-content declarations.
+- [ ] Review third-party license notices and store screenshots/graphics.
 
-- [ ] Complete Cloudflare Access browser authentication and return to the waiting SSH connection.
-- [ ] Confirm the Access login state is retained in app-private storage without logging tokens or cookies.
-- [ ] Import an unencrypted RSA PEM/OpenSSH private key through Android's document picker.
-- [ ] Confirm the key is AES-GCM encrypted with Android Keystore and remains after app restart.
-- [ ] Verify the first SSH host fingerprint against a trusted source; reject changed fingerprints.
-- [ ] Establish a real SSH public-key session to `ssh.dinceryuk.com:22` as `azureuser`.
-- [ ] Run `hostname` and `whoami` on the VM.
+## Known boundary
 
-## Interactive terminal and lifecycle
-
-- [ ] Verify PTY shell, ANSI colors, scrolling, keyboard resizing and long input.
-- [ ] Verify Enter, Backspace, Tab, Esc, arrows, Ctrl+C and Ctrl+D.
-- [ ] Verify PTY resize events reach the SSH channel.
-- [ ] Verify disconnect and reconnect.
-- [ ] Verify key persistence after force-closing and reopening the app.
-- [ ] Run `df -h`, `free -h` and read-only `sudo systemctl status cloudflared`.
-- [ ] Confirm logs contain no private key, Access URL, token or cookie.
-
-## Release
-
-- [ ] Add and verify the Gradle wrapper for Android Studio/local builds.
-- [ ] Verify the final GitHub Actions artifact and installation on the target phone.
-- [ ] Mark the app ready only after all device and Azure acceptance tests above pass.
-
-## Current boundary
-
-CI cross-compilation is not a substitute for Android runtime validation. No Cloudflare Tunnel, DNS, Access policy, firewall or Azure VM configuration changes are part of these tests.
+No Android-device SSH, PTY, or Cloudflare Access runtime test has been performed in this checkout. A successful build/package alone does not establish those features as operational. The app does not change any user's SSH server, Cloudflare Tunnel, DNS, firewall, or cloud account configuration.

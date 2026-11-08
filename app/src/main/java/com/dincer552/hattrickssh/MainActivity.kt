@@ -63,13 +63,13 @@ private fun HattrickSshApp() {
             ) {
                 Column {
                     Text(
-                        text = "HATTRICK SSH",
+                        text = "SSH CLIENT",
                         color = Color.White,
                         fontSize = 21.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Secure server terminal",
+                        text = "Secure server connections",
                         color = Muted,
                         fontSize = 12.sp
                     )
@@ -84,15 +84,15 @@ private fun HattrickSshApp() {
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(7.dp)
             ) {
-                Text("AZURE VM", color = Muted, fontSize = 11.sp)
+                Text("SSH SERVER", color = Muted, fontSize = 11.sp)
                 Text(
-                    "hattrick-vm-uks",
+                    "No server selected",
                     color = Color.White,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.SemiBold
                 )
-                Text("ssh.dinceryuksek.com:22", color = Muted, fontSize = 12.sp)
-                Text("User: azureuser", color = Muted, fontSize = 12.sp)
+                Text("Add a server profile to connect", color = Muted, fontSize = 12.sp)
+                Text("Host • port • username", color = Muted, fontSize = 12.sp)
                 Spacer(Modifier.height(4.dp))
                 Text(
                     "●  Not connected",
@@ -131,30 +131,16 @@ private fun HattrickSshApp() {
                     .padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("TERMINAL", color = Muted, fontSize = 11.sp)
                 Text(
-                    "Hattrick SSH client",
-                    color = Accent,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 13.sp
-                )
-                Text(
-                    "Cloudflare + SSH engine is not connected yet.",
+                    "This historical scaffold is not included in the active build.",
                     color = Muted,
                     fontFamily = FontFamily.Monospace,
                     fontSize = 11.sp
                 )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "azureuser@hattrick-vm-uks:~$",
-                    color = Accent,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 12.sp
-                )
             }
 
             Text(
-                "Connection is not implemented in this initial build.",
+                "The active Android app is built from src/main.",
                 color = Muted,
                 fontSize = 10.sp,
                 modifier = Modifier.align(Alignment.CenterHorizontally)

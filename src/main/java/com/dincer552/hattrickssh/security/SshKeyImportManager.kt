@@ -8,7 +8,7 @@ class SshKeyImportManager(context: Context) {
     private val resolver = context.applicationContext.contentResolver
     private val secureStorage = SecureKeyStorage(context.applicationContext)
 
-    fun importFromUri(uri: Uri): Result<Unit> {
+    fun importFromUri(uri: Uri, profileId: String): Result<Unit> {
         val keyBytes = try {
             resolver.openInputStream(uri)?.use { it.readBytes() }
                 ?: return Result.failure(IllegalStateException("Dosya okunamadı."))
@@ -31,7 +31,7 @@ class SshKeyImportManager(context: Context) {
                     !validPem -> Result.failure(
                         IllegalArgumentException("Dosya geçerli bir PEM/OpenSSH private key değil.")
                     )
-                    !secureStorage.storePrivateKey(keyBytes) -> Result.failure(
+                    !secureStorage.storePrivateKey(profileId, keyBytes) -> Result.failure(
                         IllegalStateException("Anahtar Android Keystore ile güvenli saklanamadı.")
                     )
                     else -> Result.success(Unit)
@@ -44,7 +44,7 @@ class SshKeyImportManager(context: Context) {
         }
     }
 
-    fun hasPrivateKey(): Boolean = secureStorage.hasPrivateKey()
+    fun hasPrivateKey(profileId: String): Boolean = secureStorage.hasPrivateKey(profileId)
 
     companion object {
         private const val MAX_KEY_SIZE_BYTES = 1024 * 1024

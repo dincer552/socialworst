@@ -1,6 +1,6 @@
 # Third-party notices
 
-Hattrick SSH includes or builds the following third-party components.
+SSH Client includes or builds the following third-party components.
 
 - **cloudflared**: Cloudflare, Inc., Apache License 2.0. Source: https://github.com/cloudflare/cloudflared
 - **cloudflared Android browser-fallback patch**: adapted from the Android cloudflared build work in Tinyhack SSH by Yohanes, MIT License. Source: https://github.com/yohanes/tinyhack-ssh

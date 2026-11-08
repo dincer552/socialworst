@@ -15,6 +15,10 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import com.dincer552.hattrickssh.ssh.SshConnectionManager
+import com.dincer552.hattrickssh.ssh.SshServerProfile
+import com.dincer552.hattrickssh.ssh.SshServerProfileStore
+import com.dincer552.hattrickssh.ssh.AuthenticationMethod
+import com.dincer552.hattrickssh.security.SshKeyImportManager
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalView
@@ -33,6 +37,7 @@ class TerminalActivity : ComponentActivity(), SshConnectionManager.SshCallback {
     private var terminalSession: TerminalSession? = null
     private var localServer: ServerSocket? = null
     private var tearingDown = false
+    private lateinit var profile: SshServerProfile
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -41,14 +46,23 @@ class TerminalActivity : ComponentActivity(), SshConnectionManager.SshCallback {
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
+        val profileId = intent.getStringExtra(EXTRA_PROFILE_ID)
+        profile = profileId?.let { SshServerProfileStore(applicationContext).find(it) } ?: run {
+            Toast.makeText(this, "Sunucu profili bulunamadı.", Toast.LENGTH_LONG).show()
+            finish()
+            return
+        }
+
         sshManager = SshConnectionManager(applicationContext)
         buildTerminalLayout()
 
-        if (!com.dincer552.hattrickssh.security.SecureKeyStorage(applicationContext).hasPrivateKey()) {
+        if (profile.authenticationMethod == AuthenticationMethod.PRIVATE_KEY &&
+            !SshKeyImportManager(applicationContext).hasPrivateKey(profile.id)
+        ) {
             statusView.text = "SSH anahtarı bulunamadı"
-            Toast.makeText(this, "Önce ana ekrandan RSA .pem anahtarını içe aktar.", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Önce bu sunucu profili için private key seçin.", Toast.LENGTH_LONG).show()
         } else {
-            sshManager.connect(callback = this)
+            sshManager.connect(profile, callback = this)
         }
     }
 
@@ -65,7 +79,7 @@ class TerminalActivity : ComponentActivity(), SshConnectionManager.SshCallback {
         }
         val titleColumn = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         titleColumn.addView(TextView(this).apply {
-            text = "HATTRICK SSH"
+            text = "SSH CLIENT"
             textSize = 14f
             setTextColor(android.graphics.Color.WHITE)
             setTypeface(null, android.graphics.Typeface.BOLD)
@@ -167,7 +181,7 @@ class TerminalActivity : ComponentActivity(), SshConnectionManager.SshCallback {
         sshManager.disconnect()
         sshManager = SshConnectionManager(applicationContext)
         statusView.text = "Yeniden bağlanıyor…"
-        sshManager.connect(callback = this)
+        sshManager.connect(profile, callback = this)
     }
 
     private fun startTerminalBridge() {
@@ -242,7 +256,7 @@ class TerminalActivity : ComponentActivity(), SshConnectionManager.SshCallback {
             runOnUiThread { terminalView.onScreenUpdated() }
         }
         override fun onTitleChanged(changedSession: TerminalSession) {
-            runOnUiThread { statusView.text = changedSession.title ?: "SSH • ${Constants.DEFAULT_HOST}" }
+            runOnUiThread { statusView.text = changedSession.title ?: "SSH • ${profile.host}" }
         }
         override fun onSessionFinished(finishedSession: TerminalSession) {
             runOnUiThread {
@@ -310,7 +324,7 @@ class TerminalActivity : ComponentActivity(), SshConnectionManager.SshCallback {
 
     override fun onConnected() {
         runOnUiThread {
-            statusView.text = "Bağlı • ${Constants.DEFAULT_USERNAME}@${Constants.DEFAULT_HOST}"
+            statusView.text = "Bağlı • ${profile.username}@${profile.host}"
             startTerminalBridge()
         }
     }
@@ -389,6 +403,10 @@ class TerminalActivity : ComponentActivity(), SshConnectionManager.SshCallback {
         closeLocalResources()
         sshManager.disconnect()
         super.onDestroy()
+    }
+
+    companion object {
+        const val EXTRA_PROFILE_ID = "com.dincer552.hattrickssh.EXTRA_PROFILE_ID"
     }
 
 }

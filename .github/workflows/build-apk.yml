@@ -1,4 +1,3 @@
-# Signing pipeline verification trigger.
 name: SSH Client Android Build
 
 on:
@@ -12,12 +11,12 @@ permissions:
   contents: write
 
 concurrency:
-  group: hattrick-ssh-${{ github.workflow }}-${{ github.ref }}
+    group: ssh-client-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
-    name: Build Android ARM64 APK
+    name: Build and verify Android ARM64 artifacts
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -36,7 +35,7 @@ jobs:
         run: |
           if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ]; then
             echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::APK Release publish skipped: add ANDROID_KEYSTORE_BASE64 and ANDROID_KEYSTORE_PASSWORD repository secrets."
+            echo "::warning::Signed APK/AAB publishing skipped: configure ANDROID_KEYSTORE_BASE64 and ANDROID_KEYSTORE_PASSWORD repository secrets."
             exit 0
           fi
           KEYSTORE_PATH="$RUNNER_TEMP/hattrick-ssh-signing.jks"
@@ -61,7 +60,7 @@ jobs:
       - name: Set up Android SDK and NDK
         uses: android-actions/setup-android@v4
         with:
-          packages: "platforms;android-35 build-tools;35.0.0 ndk;26.1.10909125"
+          packages: "platforms;android-36 build-tools;36.0.0 ndk;26.1.10909125"
 
       - name: Install native build tools
         run: sudo apt-get update && sudo apt-get install -y git patch make
@@ -83,16 +82,21 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
-          gradle-version: "8.9"
+          gradle-version: "8.11.1"
           cache-provider: basic
 
-      - name: Build debug APK
+      - name: Run unit tests and build debug APK
         run: |
-          gradle --no-daemon -PappVersionCode="$APP_VERSION_CODE" -PappVersionName="$APP_VERSION_NAME" assembleDebug --stacktrace
+          gradle --no-daemon -PappVersionCode="$APP_VERSION_CODE" -PappVersionName="$APP_VERSION_NAME" testGithubDebugUnitTest assembleGithubDebug
+
+      - name: Build signed release APK and Play AAB
+        if: steps.signing.outputs.configured == 'true' && github.ref == 'refs/heads/main'
+        run: |
+          gradle --no-daemon -PappVersionCode="$APP_VERSION_CODE" -PappVersionName="$APP_VERSION_NAME" assembleGithubRelease bundlePlayRelease
 
       - name: Verify packaged Android ARM64 executables
         run: |
-          APK="$(find build/outputs/apk/debug -maxdepth 1 -name '*.apk' -print -quit)"
+          APK="$(find build/outputs/apk/github/debug -maxdepth 1 -name '*.apk' -print -quit)"
           test -n "$APK"
           mkdir -p "$RUNNER_TEMP/native-check"
           for LIB in libcloudflared.so libsshbridge.so; do
@@ -101,28 +105,70 @@ jobs:
             file "$RUNNER_TEMP/native-check/$LIB"
           done
 
-      - name: Prepare stable Release APK filename
+      - name: Prepare debug APK filename
         run: |
-          APK="$(find build/outputs/apk/debug -maxdepth 1 -name '*.apk' -print -quit)"
+          APK="$(find build/outputs/apk/github/debug -maxdepth 1 -name '*.apk' -print -quit)"
           test -n "$APK"
-          cp "$APK" build/outputs/apk/debug/hattrick-ssh.apk
+          cp "$APK" build/outputs/apk/github/debug/ssh-client-debug.apk
 
       - name: Upload debug APK artifact
         uses: actions/upload-artifact@v7
         with:
-          name: hattrick-ssh-debug-apk
-          path: build/outputs/apk/debug/hattrick-ssh.apk
+          name: ssh-client-debug-apk
+          path: build/outputs/apk/github/debug/ssh-client-debug.apk
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish GitHub Release
+      - name: Prepare signed GitHub APK
+        if: steps.signing.outputs.configured == 'true' && github.ref == 'refs/heads/main'
+        run: |
+          APK="$(find build/outputs/apk/github/release -maxdepth 1 -name '*.apk' -print -quit)"
+          test -n "$APK"
+          cp "$APK" build/outputs/apk/github/release/ssh-client.apk
+          cp "$APK" build/outputs/apk/github/release/hattrick-ssh.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose build/outputs/apk/github/release/ssh-client.apk
+          jarsigner -verify build/outputs/bundle/playRelease/*.aab
+
+      - name: Verify APK update certificate continuity
+        if: steps.signing.outputs.configured == 'true' && github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          OLD_APK_URL="$(curl -fsSL -H 'Accept: application/vnd.github+json' -H 'User-Agent: SSH-Client-CI' https://api.github.com/repos/dincer552/socialworst/releases/latest | jq -r '.assets[] | select(.name == "hattrick-ssh.apk") | .browser_download_url' | head -n 1)"
+          test -n "$OLD_APK_URL"
+          curl -fsSL "$OLD_APK_URL" -o "$RUNNER_TEMP/previous-ssh-client.apk"
+          OLD_CERT="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$RUNNER_TEMP/previous-ssh-client.apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+          NEW_CERT="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs build/outputs/apk/github/release/ssh-client.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+          test -n "$OLD_CERT" && test "$OLD_CERT" = "$NEW_CERT"
+
+      - name: Publish signed APK and Android App Bundle
         if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && steps.signing.outputs.configured == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.APP_VERSION_NAME }}
-          name: Hattrick SSH v${{ env.APP_VERSION_NAME }}
+          name: SSH Client v${{ env.APP_VERSION_NAME }}
           target_commitish: main
           make_latest: true
           generate_release_notes: true
-          files: build/outputs/apk/debug/hattrick-ssh.apk
+          files: |
+            build/outputs/apk/github/release/ssh-client.apk
+            build/outputs/apk/github/release/hattrick-ssh.apk
+            build/outputs/bundle/playRelease/*.aab
           fail_on_unmatched_files: true
+
+      - name: Upload signed GitHub APK artifact
+        if: steps.signing.outputs.configured == 'true' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ssh-client-signed-apk-${{ env.APP_VERSION_NAME }}
+          path: build/outputs/apk/github/release/ssh-client.apk
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload signed Play bundle artifact
+        if: steps.signing.outputs.configured == 'true' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ssh-client-play-aab-${{ env.APP_VERSION_NAME }}
+          path: build/outputs/bundle/playRelease/*.aab
+          if-no-files-found: error
+          retention-days: 90
