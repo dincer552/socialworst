@@ -376,6 +376,7 @@ private fun MainScreen(
     if (showEditor) {
         ProfileEditor(
             initial = editingProfile,
+            keyManager = keyManager,
             onDismiss = { showEditor = false },
             onSave = { profile ->
                 if (store.save(profile)) {
@@ -406,6 +407,7 @@ private fun MainScreen(
 @Composable
 private fun ProfileEditor(
     initial: SshServerProfile?,
+    keyManager: SshKeyImportManager,
     onDismiss: () -> Unit,
     onSave: (SshServerProfile) -> Unit
 ) {
@@ -418,6 +420,27 @@ private fun ProfileEditor(
     var method by remember(initial?.id) { mutableStateOf(initial?.authenticationMethod ?: AuthenticationMethod.PRIVATE_KEY) }
     var cloudflare by remember(initial?.id) { mutableStateOf(initial?.useCloudflareAccess ?: false) }
     var error by remember(initial?.id) { mutableStateOf<String?>(null) }
+    val profileId = remember(initial?.id) { initial?.id ?: java.util.UUID.randomUUID().toString() }
+    var keyReady by remember(initial?.id) {
+        mutableStateOf(initial?.let { keyManager.hasPrivateKey(it.id) } ?: false)
+    }
+    val context = LocalContext.current
+    val privateKeyPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            keyManager.importFromUri(uri, profileId)
+                .onSuccess {
+                    keyReady = true
+                    error = null
+                    Toast.makeText(context, "Private key güvenli şekilde kaydedildi.", Toast.LENGTH_SHORT).show()
+                }
+                .onFailure {
+                    keyReady = false
+                    error = it.message ?: "Private key içe aktarılamadı."
+                }
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -440,6 +463,18 @@ private fun ProfileEditor(
                 }
                 if (method == AuthenticationMethod.PASSWORD) {
                     OutlinedTextField(password, { password = it }, label = { Text("SSH parolası") }, visualTransformation = PasswordVisualTransformation(), singleLine = true)
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedButton(onClick = { privateKeyPicker.launch(arrayOf("*/*")) }) {
+                            Text(if (keyReady) "Private key değiştir" else "Private key dosyası seç")
+                        }
+                        Text(
+                            if (keyReady) "Anahtar hazır" else "Anahtar seçilmedi",
+                            color = if (keyReady) AppGreen else AppMuted,
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                    }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = cloudflare, onCheckedChange = { cloudflare = it })
@@ -457,11 +492,12 @@ private fun ProfileEditor(
                     parsedPort == null || parsedPort !in 1..65535 -> "Port 1–65535 arasında olmalı."
                     username.isBlank() -> "Kullanıcı adı gerekli."
                     method == AuthenticationMethod.PASSWORD && password.isBlank() -> "SSH parolası gerekli."
+                    method == AuthenticationMethod.PRIVATE_KEY && !keyReady -> "Devam etmek için private key dosyası seçin."
                     else -> null
                 }
                 if (error == null) onSave(
                     SshServerProfile(
-                        id = initial?.id ?: java.util.UUID.randomUUID().toString(),
+                        id = profileId,
                         name = name.trim(),
                         host = host.trim(),
                         port = parsedPort!!,
