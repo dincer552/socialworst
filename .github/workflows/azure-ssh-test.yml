@@ -1,0 +1,55 @@
+name: SSH Client - Azure SSH connection test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+    paths:
+      - ".github/workflows/azure-ssh-test.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  ssh-test:
+    name: Test Cloudflare Access and Azure SSH
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    env:
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+    steps:
+      - name: Check required secret and validate private key
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$SSH_PRIVATE_KEY" ]; then
+            echo "::error::Repository secret SSH_PRIVATE_KEY is missing or empty."
+            exit 1
+          fi
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/id_test"
+          chmod 600 "$HOME/.ssh/id_test"
+          ssh-keygen -y -f "$HOME/.ssh/id_test" > "$HOME/.ssh/id_test.pub"
+          echo "Private key format is valid."
+          ssh-keygen -lf "$HOME/.ssh/id_test.pub"
+
+      - name: Install cloudflared
+        run: |
+          curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o "$RUNNER_TEMP/cloudflared"
+          chmod +x "$RUNNER_TEMP/cloudflared"
+          "$RUNNER_TEMP/cloudflared" --version
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: Attempt SSH through Cloudflare Access
+        shell: bash
+        run: |
+          set -uo pipefail
+          set +e
+          timeout 45s ssh -vv             -i "$HOME/.ssh/id_test"             -o IdentitiesOnly=yes             -o BatchMode=yes             -o StrictHostKeyChecking=accept-new             -o ConnectTimeout=15             -o ServerAliveInterval=5             -o ProxyCommand="cloudflared access ssh --hostname %h"             azureuser@ssh.dinceryuksek.com             'hostname && whoami && df -h /'
+          STATUS=$?
+          set -e
+          if [ "$STATUS" -ne 0 ]; then
+            echo "::error::SSH test failed with exit code $STATUS. Check the log to identify whether Access authentication, proxy startup, or SSH key authentication failed."
+            exit "$STATUS"
+          fi
+          echo "Remote SSH command completed successfully."
