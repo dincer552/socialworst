@@ -73,3 +73,17 @@ A successful APK build only proves compilation and packaging. It does not prove 
 ## Third-party components
 
 See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for component sources and licenses.
+
+
+## In-app updates
+
+The app checks the latest public GitHub Release whenever its main screen opens. A new APK is downloaded through Android DownloadManager with visible progress, then Android's package installer asks the user to approve the update.
+
+GitHub Actions signs published APKs with a persistent CI key so Android accepts later APKs as updates. Never commit the signing key to this public repository.
+
+### Required repository secrets
+
+- `ANDROID_KEYSTORE_BASE64`: Base64-encoded JKS keystore.
+- `ANDROID_KEYSTORE_PASSWORD`: keystore password.
+
+Create the key once with `keytool -genkeypair -v -keystore hattrick-ssh-signing.jks -alias hattrickssh -keyalg RSA -keysize 2048 -validity 10000`. Use the same password for the keystore and key (press Enter at the key-password prompt). Never replace this key after the first signed APK is published.
