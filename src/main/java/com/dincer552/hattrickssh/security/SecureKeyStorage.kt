@@ -9,7 +9,6 @@ import com.dincer552.hattrickssh.Constants
 import java.io.File
 import java.nio.ByteBuffer
 import java.security.KeyStore
-import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -78,9 +77,11 @@ class SecureKeyStorage(private val context: Context) {
     @Synchronized
     private fun storeResult(name: String, cleartext: ByteArray): Result<Unit> = try {
         require(cleartext.isNotEmpty())
-        val iv = ByteArray(12).also { SecureRandom().nextBytes(it) }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey(), GCMParameterSpec(128, iv))
+        // Android Keystore generates the IV when randomized encryption is required.
+        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
+        val iv = requireNotNull(cipher.iv) { "Android Keystore IV oluşturmadı." }
+        require(iv.size == 12) { "Beklenmeyen AES-GCM IV uzunluğu." }
         val ciphertext = cipher.doFinal(cleartext)
         val bytes = ByteBuffer.allocate(iv.size + ciphertext.size).put(iv).put(ciphertext).array()
 
