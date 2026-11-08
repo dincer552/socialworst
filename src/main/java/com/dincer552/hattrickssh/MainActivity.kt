@@ -189,8 +189,8 @@ private fun MainScreen(onConnect: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("HATTRICK SSH", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold)
-                    Text("Private server terminal", color = AppMuted, fontSize = 11.sp)
+                    Text("SSH CLIENT", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                    Text("Secure terminal connection", color = AppMuted, fontSize = 11.sp)
                 }
                 Text("SSH", color = AppGreen, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             }
