@@ -34,6 +34,8 @@ class TerminalActivity : ComponentActivity(), SshConnectionManager.SshCallback {
     private lateinit var sshManager: SshConnectionManager
     private lateinit var terminalView: TerminalView
     private lateinit var statusView: TextView
+    private lateinit var diagnosticView: TextView
+    private val diagnosticLines = ArrayDeque<String>()
     private var terminalSession: TerminalSession? = null
     private var localServer: ServerSocket? = null
     private var tearingDown = false
@@ -113,6 +115,26 @@ class TerminalActivity : ComponentActivity(), SshConnectionManager.SshCallback {
         header.addView(disconnectButton, LinearLayout.LayoutParams(dp(58), dp(42)))
         root.addView(header)
 
+        val terminalArea = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(android.graphics.Color.BLACK)
+        }
+        diagnosticView = TextView(this).apply {
+            text = "SSH Client tanı günlüğü\\nBağlantı başlatılıyor…"
+            textSize = 10f
+            typeface = android.graphics.Typeface.MONOSPACE
+            setTextColor(android.graphics.Color.rgb(150, 210, 170))
+            setPadding(dp(8), dp(6), dp(8), dp(6))
+            setTextIsSelectable(true)
+        }
+        val diagnosticScroll = android.widget.ScrollView(this).apply {
+            setBackgroundColor(android.graphics.Color.rgb(8, 12, 10))
+            addView(diagnosticView)
+        }
+        terminalArea.addView(
+            diagnosticScroll,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(116))
+        )
         terminalView = TerminalView(this, null).apply {
             setBackgroundColor(android.graphics.Color.BLACK)
             setTextSize(12)
@@ -130,8 +152,12 @@ class TerminalActivity : ComponentActivity(), SshConnectionManager.SshCallback {
                 )
             }
         }
-        root.addView(
+        terminalArea.addView(
             terminalView,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
+        )
+        root.addView(
+            terminalArea,
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
         )
 
@@ -175,7 +201,15 @@ class TerminalActivity : ComponentActivity(), SshConnectionManager.SshCallback {
         parent.addView(button, params)
     }
 
+    private fun appendDiagnostic(message: String) {
+        val line = message.replace(Regex("[\\r\\n]+"), " ").take(240)
+        diagnosticLines.addLast(line)
+        while (diagnosticLines.size > 80) diagnosticLines.removeFirst()
+        diagnosticView.text = diagnosticLines.joinToString("\\n")
+    }
+
     private fun retryConnection() {
+        appendDiagnostic("[SSH] Yeniden bağlantı deneniyor")
         if (tearingDown) return
         closeLocalResources()
         sshManager.disconnect()
@@ -319,12 +353,19 @@ class TerminalActivity : ComponentActivity(), SshConnectionManager.SshCallback {
     }
 
     override fun onConnecting() {
-        runOnUiThread { statusView.text = "Cloudflare Access / SSH bağlanıyor…" }
+        runOnUiThread {
+            statusView.text = "Cloudflare Access / SSH bağlanıyor…"
+            appendDiagnostic("[BAŞLANGIÇ] Sunucu: ${profile.host}:${profile.port}")
+            appendDiagnostic("[SSH] Kimlik doğrulama hazırlanıyor")
+            if (profile.useCloudflareAccess) appendDiagnostic("[CLOUDFLARE] Access proxy kullanılacak")
+        }
     }
 
     override fun onConnected() {
         runOnUiThread {
             statusView.text = "Bağlı • ${profile.username}@${profile.host}"
+            appendDiagnostic("[SSH] Uzak shell açıldı")
+            appendDiagnostic("[PTY] Android terminal köprüsü başlatılıyor")
             startTerminalBridge()
         }
     }
@@ -340,6 +381,7 @@ class TerminalActivity : ComponentActivity(), SshConnectionManager.SshCallback {
     override fun onError(message: String) {
         runOnUiThread {
             statusView.text = "Bağlantı hatası"
+            appendDiagnostic("[HATA] $message")
             Toast.makeText(this, message, Toast.LENGTH_LONG).show()
         }
     }
@@ -379,13 +421,13 @@ class TerminalActivity : ComponentActivity(), SshConnectionManager.SshCallback {
     }
 
     override fun onDiagnostic(message: String) {
-        // Diagnostics are intentionally not written to logcat or terminal input.
+        // Sanitized diagnostics are displayed locally, never sent to the remote shell.
         runOnUiThread {
+            appendDiagnostic(message)
             if (message.contains("error", ignoreCase = true) ||
-                message.contains("failed", ignoreCase = true)
-            ) {
-                statusView.text = "Cloudflare: ${message.take(90)}"
-            }
+                message.contains("failed", ignoreCase = true) ||
+                message.contains("denied", ignoreCase = true)
+            ) statusView.text = message.take(90)
         }
     }
 
