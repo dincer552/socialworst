@@ -18,9 +18,9 @@ A minimal Android SSH client for connecting to a personal Azure Linux VM through
 
 1. The app imports a PEM/OpenSSH private key from Android's document picker.
 2. The key is encrypted with AES-256-GCM using a non-exportable Android Keystore key. StrongBox is used when available and supported; otherwise Android Keystore is used.
-3. The app launches its Android ARM64 `cloudflared` binary and uses its stdin/stdout as the SSH proxy byte stream. stderr is kept separate for diagnostics and the Cloudflare login URL.
+3. The app starts the Android ARM64 `cloudflared` executable packaged in the APK under `jniLibs/arm64-v8a` and extracted by Android to `ApplicationInfo.nativeLibraryDir`. stdin/stdout form the SSH proxy byte stream; stderr carries diagnostics and the Cloudflare login URL.
 4. The SSH library (mwiede JSch) connects using public-key authentication and verifies/pins the server's SSH host key in encrypted app-private storage.
-5. An Android ARM64 PTY bridge connects a local loopback socket to the Termux VT terminal view. The SSH channel is a real interactive shell with an `xterm-256color` PTY.
+5. An Android ARM64 PTY bridge, also packaged under `jniLibs/arm64-v8a`, connects a local loopback socket to the Termux VT terminal view. The SSH channel is a real interactive shell with an `xterm-256color` PTY.
 
 The app does not use an HTTP/WebView terminal and does not send shell commands through a fake command field. The initial connection timeout is three minutes to allow interactive Cloudflare Access login.
 
@@ -42,7 +42,7 @@ GitHub Actions builds the native components and the Android debug APK on pushes 
 The workflow:
 - Installs JDK 17, Android SDK/NDK and Go.
 - Builds Cloudflare's `cloudflared` source for `GOOS=android GOARCH=arm64 CGO_ENABLED=1`.
-- Compiles `src/main/cpp/sshbridge.c` for Android ARM64.
+- Compiles `src/main/cpp/sshbridge.c` as `libsshbridge.so` for Android ARM64.
 - Runs `gradle assembleDebug`.
 - Publishes `build/outputs/apk/debug/*.apk` as the `hattrick-ssh-debug-apk` artifact.
 
@@ -50,11 +50,11 @@ To build locally, install JDK 17, Android SDK (API 35), NDK 26.1.10909125, Go 1.
 
 ```bash
 scripts/build-cloudflared-android.sh
-mkdir -p src/main/assets/bin
+mkdir -p src/main/jniLibs/arm64-v8a
 NDK="$ANDROID_HOME/ndk/26.1.10909125"
 CC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android26-clang"
 "$CC" -O2 -Wall -Wextra -fPIE -pie -Wl,-z,max-page-size=16384 \
-  src/main/cpp/sshbridge.c -o src/main/assets/bin/sshbridge
+  src/main/cpp/sshbridge.c -o src/main/jniLibs/arm64-v8a/libsshbridge.so
 gradle assembleDebug
 ```
 
@@ -62,13 +62,13 @@ gradle assembleDebug
 
 Cloudflare's documented SSH pattern is to use `cloudflared access ssh --hostname <host>` as the SSH client's stdio proxy. It is not a local TCP forwarder and does not use `--url ssh://localhost:<port>`.
 
-The Android patch delegates opening the interactive login URL to the host Android app. Access credentials and the cloudflared config are stored inside the app-private files directory, which is excluded from Android backup.
+The Android patch delegates opening the interactive login URL to the host Android app. Access credentials and the cloudflared config are stored inside the app-private files directory, which is excluded from Android backup. Executable code is not copied into that writable directory: Android 10+ blocks `exec()` from a target-29+ app's writable home. Both executables are packaged as ARM64 native payloads and extracted by Package Manager to `ApplicationInfo.nativeLibraryDir`. Gradle's `jniLibs.useLegacyPackaging = true` requests filesystem extraction.
 
 The app does not modify the Cloudflare Tunnel, DNS, Access application, firewall or VM configuration.
 
 ## Important test status
 
-A successful APK build only proves packaging. End-to-end use still requires testing on a real Android ARM64 device with the user's Cloudflare Access policy and Azure public-key account. The GitHub Actions artifact must be checked for a green build before installing.
+A successful APK build only proves compilation and packaging. It does not prove that Android can launch both packaged native executables or that Cloudflare Access and SSH authentication work on the device. Those steps must be tested on a real Android ARM64 phone before calling the client operational.
 
 ## Third-party components
 

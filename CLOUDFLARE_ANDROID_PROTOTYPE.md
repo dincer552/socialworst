@@ -18,7 +18,8 @@ Do not use `cloudflared access ssh --url ssh://localhost:<port>`. The `--url` lo
 ## Android implementation
 
 - Build Cloudflare's client with `GOOS=android GOARCH=arm64 CGO_ENABLED=1` and Android NDK clang.
-- Extract the ARM64 executable into app-private storage, set owner-executable permission and check whether Android permits launching it.
+- Package the ARM64 executable as `src/main/jniLibs/arm64-v8a/libcloudflared.so` and set `jniLibs.useLegacyPackaging = true`, so Android's Package Manager extracts it into `ApplicationInfo.nativeLibraryDir`.
+- Start it from `nativeLibraryDir`; do not copy it into `filesDir` or another writable app-home directory. Android 10+ blocks executing files from the writable app home for apps targeting API 29+.
 - Set `HOME` and `XDG_CONFIG_HOME` to a private app directory so Access login state is not stored in shared storage.
 - Parse the login URL only from stderr and hand it to Android with an HTTPS `ACTION_VIEW` intent.
 - Keep stdout untouched for the SSH protocol stream.
@@ -26,4 +27,4 @@ Do not use `cloudflared access ssh --url ssh://localhost:<port>`. The `--url` lo
 
 ## Device validation still required
 
-A successful cross-compile does not prove Android's runtime will permit process execution from app-private storage or that the user's Access policy will complete browser authentication. The GitHub Actions workflow builds and packages the native ARM64 binaries; an actual Android ARM64 phone must be used for end-to-end validation.
+A successful cross-compile and APK packaging do not prove that Android can execute the packaged PIE binaries from `nativeLibraryDir`, or that the user's Access policy will complete browser authentication. An Android ARM64 phone must verify `ProcessBuilder` launch of cloudflared and `TerminalSession` launch of sshbridge, then complete the browser and SSH flows.

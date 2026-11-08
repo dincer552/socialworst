@@ -14,5 +14,4 @@ captures/
 *.keystore
 *.pem
 *.key
-src/main/assets/bin/cloudflared
-src/main/assets/bin/sshbridge
+src/main/jniLibs/arm64-v8a/
