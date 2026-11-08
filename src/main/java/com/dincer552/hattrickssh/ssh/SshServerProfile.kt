@@ -36,10 +36,10 @@ class SshServerProfileStore(context: Context) {
         if (upgradedInstall && all().isEmpty() && storage.hasPrivateKey()) {
             val profile = SshServerProfile(
                 name = "Previous server",
-                host = "ssh.dinceryuk.com",
-                username = "azureuser",
-                description = "Migrated from the previous app version",
-                useCloudflareAccess = true
+                host = "",
+                username = "",
+                description = "Migrated key. Enter this server's host and username to reconnect.",
+                useCloudflareAccess = false
             )
             if (!save(profile)) return
             storage.loadPrivateKey()?.let { legacyKey ->

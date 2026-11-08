@@ -1,25 +1,33 @@
 # SSH Client for Android
 
-A native Android SSH client with saved server profiles, an interactive terminal and optional Cloudflare Access transport. The app uses SSH/JSch and the Termux terminal emulator; it does not simulate shell commands.
+A native Android SSH client with saved server profiles, an interactive terminal, and optional Cloudflare Access transport. Commands run in a real SSH shell; the app does not simulate a terminal.
 
-## Current implementation
+## Features
 
-- Application ID: `com.dincer552.hattrickssh` (kept stable for existing installations).
-- Minimum Android: API 26; Play release target: API 36.
-- ARM64 native payloads: Cloudflare `cloudflared` and the PTY socket bridge.
-- Authentication: per-profile SSH private key or password. Private keys and profile data are encrypted with AES-GCM using a non-exportable Android Keystore key.
-- Cloudflare Access: optional per profile. Direct SSH is supported without `cloudflared`.
-- Backups: app backup is disabled; sensitive app files are excluded from extraction and device transfer.
-- Updates: GitHub-installed APK builds use signed GitHub Release APK updates. The Play flavor uses Google Play in-app updates and does not request `REQUEST_INSTALL_PACKAGES`.
-- Existing installations migrate the previous single-server profile and encrypted key on first launch after upgrade; fresh installs start with an empty server list.
+- Application ID: `com.dincer552.hattrickssh` (preserved for existing installations).
+- Android API 26+; target API 36; ARM64 native payloads.
+- Multiple server profiles with direct SSH or optional Cloudflare Access.
+- Per-profile SSH private key or password authentication.
+- Profile data, passwords, private keys, and known-host keys are encrypted in app-private storage using AES-GCM and Android Keystore.
+- GitHub Release updates: the app checks for releases on launch and from the in-app control. It downloads `ssh-client.apk`; Android asks the user to approve installation and checks that the APK signature matches the installed app.
+- App data backup is disabled.
 
-Cloudflare/PTY execution has only been cross-compiled and packaged in CI so far. It must still be verified on a real ARM64 Android device before describing that path as operational.
+Cloudflare and PTY native execution still require testing on a real ARM64 Android device. A successful cross-build alone does not prove those runtime paths work.
 
-## Build layout
+## GitHub Releases and signing
 
-The active Android application is the repository-root Gradle project and `src/main`. The historical `app/` directory is not included in `settings.gradle.kts` and is not part of the build.
+On a push to `main`, GitHub Actions builds a debug APK and, when signing secrets are configured, a signed release APK. The release includes `ssh-client.apk` for the in-app updater and `hattrick-ssh.apk` for compatibility with older app versions. Before publishing, CI compares the new APK certificate with the currently published APK certificate.
 
-Build the GitHub debug APK:
+Configure these GitHub repository Actions secrets:
+
+- `ANDROID_KEYSTORE_BASE64`: base64-encoded existing JKS file.
+- `ANDROID_KEYSTORE_PASSWORD`: JKS password (and the configured signing alias password).
+
+Never replace or commit the existing JKS, change the application ID, or send signing material in chat. Android requires user approval to install APK updates from outside Google Play.
+
+## Local build
+
+The active Android module is the repository-root Gradle project and `src/main`.
 
 ```sh
 scripts/build-cloudflared-android.sh
@@ -28,28 +36,7 @@ NDK="$ANDROID_HOME/ndk/26.1.10909125"
 CC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android26-clang"
 "$CC" -O2 -Wall -Wextra -fPIE -pie -Wl,-z,max-page-size=16384 \
   src/main/cpp/sshbridge.c -o src/main/jniLibs/arm64-v8a/libsshbridge.so
-gradle assembleGithubDebug
+gradle assembleDebug
 ```
 
-The GitHub Actions workflow builds the native ARM64 payloads, an unsigned debug APK, and—when the signing secrets are configured—a signed GitHub APK plus a signed Play AAB.
-
-## Signing and distribution
-
-GitHub repository secrets:
-
-- `ANDROID_KEYSTORE_BASE64`: base64 encoding of the existing persistent JKS.
-- `ANDROID_KEYSTORE_PASSWORD`: password for the JKS and `hattrickssh` alias.
-
-Do not generate a replacement keystore, commit key material, or change the application ID. The GitHub APK update path requires the same signing certificate used for previously distributed APKs. Before publishing to Play, verify the JKS certificate against the currently distributed APK and configure Play App Signing so existing installations remain updatable. Play upload is not automated yet: the workflow produces the AAB for review/upload in Play Console.
-
-## Privacy
-
-See [PRIVACY_POLICY.md](./PRIVACY_POLICY.md). No advertising or analytics SDK is currently configured. Network traffic is used for the user's SSH connection, optional Cloudflare Access, and—only in the GitHub APK flavor—GitHub Release update checks/downloads.
-
-## Store submission work still required
-
-- Verify the signing certificate and upload the Play AAB to an internal test track.
-- Test profile CRUD, password/key authentication, direct SSH, terminal lifecycle, and optional Cloudflare Access on supported Android devices.
-- Complete Play Console identity, app content, Data safety and target-audience declarations.
-- Provide a public privacy policy URL, store listing text, screenshots, feature graphic, and support contact.
-- Review open-source notices in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
+See [PRIVACY_POLICY.md](./PRIVACY_POLICY.md) and [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md). No real server, Cloudflare, or Android-device test is claimed until it has actually been run.

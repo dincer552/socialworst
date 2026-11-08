@@ -63,6 +63,7 @@ import com.google.android.play.core.install.model.AppUpdateType
 import com.google.android.play.core.install.model.UpdateAvailability
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private val AppBackground = Color(0xFF080D12)
@@ -171,6 +172,25 @@ private fun MainScreen(
     var downloadId by remember { mutableStateOf<Long?>(null) }
     var downloadPercent by remember { mutableIntStateOf(0) }
     var pendingInstallUri by remember { mutableStateOf<Uri?>(null) }
+    var isCheckingUpdate by remember { mutableStateOf(false) }
+    val updateScope = rememberCoroutineScope()
+    val checkGitHubUpdates: () -> Unit = {
+        if (!BuildConfig.PLAY_DISTRIBUTION && !isCheckingUpdate) {
+            isCheckingUpdate = true
+            updateError = null
+            updateScope.launch {
+                try {
+                    githubUpdate = AppUpdateManager.checkForUpdate()
+                    githubUpdateStatus = if (githubUpdate == null) "G\u00FCncel" else "Yeni s\u00FCr\u00FCm ${githubUpdate?.versionName} mevcut"
+                } catch (error: Exception) {
+                    githubUpdateStatus = "G\u00FCncelleme kontrol edilemedi"
+                    updateError = error.message ?: "A\u011F hatas\u0131"
+                } finally {
+                    isCheckingUpdate = false
+                }
+            }
+        }
+    }
 
     LaunchedEffect(updateCheckRequest) {
         store.migrateLegacyInstallIfNeeded()
@@ -308,6 +328,13 @@ private fun MainScreen(
                     }
                 }
             }
+            if (!BuildConfig.PLAY_DISTRIBUTION) {
+                OutlinedButton(
+                    onClick = checkGitHubUpdates,
+                    enabled = !isCheckingUpdate && downloadId == null,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(if (isCheckingUpdate) "G\u00FCncellemeler kontrol ediliyor..." else "G\u00FCncellemeleri kontrol et") }
+            }
             val updateStatus = if (BuildConfig.PLAY_DISTRIBUTION) playUpdateStatus else githubUpdateStatus
             Text("${BuildConfig.VERSION_NAME} • $updateStatus", color = AppMuted, fontSize = 10.sp)
             if (BuildConfig.PLAY_DISTRIBUTION && playUpdateAvailable) {
@@ -322,7 +349,7 @@ private fun MainScreen(
                 ) { Text("İMZALI APK'Yİ GÜNCELLE • ${githubUpdate!!.versionName}") }
             } else if (!BuildConfig.PLAY_DISTRIBUTION && updateError != null && downloadId == null) {
                 OutlinedButton(
-                    onClick = { updateError = null; updateCheckRequest++ },
+                    onClick = checkGitHubUpdates,
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("GÜNCELLEMEYİ TEKRAR DENE") }
             }

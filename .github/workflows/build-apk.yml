@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 concurrency:
-    group: ssh-client-${{ github.workflow }}-${{ github.ref }}
+  group: ssh-client-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

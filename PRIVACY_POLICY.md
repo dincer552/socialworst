@@ -1,34 +1,30 @@
-# Gizlilik Politikası — SSH Client
+# SSH Client Gizlilik Politikasi
 
-Son güncelleme: 8 Kasım 2026
+Son guncelleme: 8 Kasim 2026
 
-Bu politika, `com.dincer552.hattrickssh` Android uygulamasının mevcut kod davranışını açıklar. Uygulama reklam veya analiz SDK'sı kullanmaz; uygulama geliştiricisine analitik/telemetri göndermez ve uygulama hesabı oluşturmaz.
+Bu politika `com.dincer552.hattrickssh` Android uygulamasinin mevcut davranisini aciklar. Uygulama reklam veya analiz SDK'si kullanmaz; gelistiriciye analitik/telemetri gondermez ve uygulama hesabi olusturmaz.
 
 ## Cihazda saklanan bilgiler
 
-Kullanıcının oluşturduğu sunucu profilleri; sunucu adı, host/IP, port, kullanıcı adı, kimlik doğrulama tercihi, açıklama, Cloudflare Access tercihi ve parola kimlik doğrulaması seçildiyse SSH parolasını içerir. Profil verisi uygulamanın özel dosya alanında AES-GCM ile şifrelenir. Şifreleme anahtarı Android Keystore içinde üretilir ve uygulama tarafından dışarı aktarılamaz.
+Sunucu profilleri sunucu adi, host/IP, port, kullanici adi, kimlik dogrulama tercihi, aciklama, Cloudflare Access tercihi ve parola ile kimlik dogrulama secilmisse SSH parolasini icerebilir. Profil verileri uygulamanin ozel dosya alaninda AES-GCM ile sifrelenir. Sifreleme anahtari Android Keystore icinde uretilir ve uygulama tarafindan disari aktarilamaz.
 
-Kullanıcının Android dosya seçicisinden seçtiği SSH private key, uygulamaya aktarılır ve aynı Android Keystore tabanlı şifreli depolamada profil kimliğiyle ilişkilendirilir. Anahtar veya parola GitHub'a, uygulama geliştiricisine ya da bir analiz hizmetine gönderilmez. SSH kimlik doğrulaması sırasında seçilen sunucuya iletilir.
+Kullanicinin Android dosya secicisinden sectigi SSH private key uygulamaya aktarilir ve Android Keystore tabanli AES-GCM sifrelemesiyle ilgili profil kimligiyle iliskilendirilerek saklanir. Private key dosyasinin kendisi sunucuya gonderilmez; anahtar SSH kimlik dogrulamasinda cihazda kullanilir. Parola ile kimlik dogrulamasi secilirse parola, SSH baglantisi sirasinda SSH protokolu uzerinden kullanicinin sectigi sunucuya iletilir.
 
-SSH sunucusu host key parmak izleri de uygulama özel alanında şifrelenmiş olarak saklanır. Cloudflare Access kullanılırsa `cloudflared` erişim durumu ve yapılandırması uygulamanın özel dosya alanında tutulur; bu Cloudflare verileri ayrıca AES-GCM ile şifrelenmiş olarak tanımlanmamıştır.
+SSH sunucusu host key parmak izleri de uygulamanin ozel alaninda sifrelenmis olarak saklanir. Cloudflare Access kullanilirsa `cloudflared` erisim durumu ve yapilandirmasi uygulamanin ozel alaninda tutulur; bu Cloudflare verileri uygulama tarafindan ayrica AES-GCM ile sifrelenmez.
 
-## Ağ bağlantıları ve üçüncü taraflar
+## Ag baglantilari ve ucuncu taraflar
 
-- SSH bağlantısı, yalnızca kullanıcının profilde belirttiği sunucuya ve porta kurulur. Bağlantı içeriği SSH protokolü üzerinden gider.
-- Cloudflare Access isteğe bağlıdır. Açıldığında kimlik doğrulaması Cloudflare hizmetleri ve kullanıcının tarayıcısı üzerinden tamamlanır; SSH trafiği yapılandırılmış Cloudflare tünelinden taşınır.
-- GitHub APK dağıtımındaki sürüm kontrolü, herkese açık GitHub Releases API'sine istek gönderir ve kullanıcı güncellemeyi seçerse imzalı APK'yi GitHub'dan indirir. İstek GitHub'a standart ağ bağlantısı bilgilerini (ör. IP adresi) açıklar.
-- Google Play dağıtımında sürüm kontrolü/güncelleme Google Play In-App Updates API'siyle yapılır. Bu sürüm uygulama içinden APK indirme veya kurma izni istemez.
+- SSH baglantisi yalnizca kullanicinin profilde belirttigi sunucuya ve porta kurulur. Secilen sunucu baglanti verilerini ve gonderilen komut/terminal icerigini alabilir. SSH trafigi SSH protokoluyle korunur.
+- Cloudflare Access istege baglidir. Etkinlestirildiginde tarayiciyla Cloudflare kimlik dogrulamasi yapilabilir ve SSH trafigi kullanicinin yapilandirdigi Cloudflare Tunnel uzerinden tasinir.
+- Uygulama acilista ve kullanici guncelleme kontrolunu sectiginde herkese acik GitHub Releases API'sine baglanir. Kullanici yeni surumu indirmeyi secerse APK GitHub'dan indirilir. Bu ag istekleri GitHub'a olagan baglanti bilgilerini (ornegin IP adresi) aciklar.
+- Android APK kurulum ekrani gosterir. Kullanici bilinmeyen kaynaklardan yukleme iznini Android ayarlarindan vermek ve guncellemeyi onaylamak zorunda kalabilir. Android, kurulu uygulamanin imza sertifikasi eslesmeyen APK'nin uzerine kurulum yapilmasina izin vermez.
 
-Uygulama geliştiricisinin sunucusu üzerinden profil, özel anahtar, parola veya terminal içeriği toplanmaz. Uygulamada reklam gösterilmez ve reklam/analiz amacıyla veri paylaşımı yapılmaz.
+Gelistiricinin sunuculari profilleri, private key'leri, parolalari veya terminal icerigini toplamaz. Uygulamada reklam gosterilmez ve reklam/analiz amaciyla veri paylasimi yapilmaz.
 
-## Saklama, silme ve yedekleme
+## Saklama ve yedekleme
 
-Profiller ve kimlik bilgileri kullanıcı profili silene, uygulama verisini temizleyene veya uygulamayı kaldırana kadar cihazda kalır. Android uygulama yedeklemesi kapalıdır; bulut yedekleme ve cihaz aktarımı kuralları uygulama verilerinin tamamını hariç tutar. Bu nedenle uygulama kaldırılırsa veya cihaz değiştirilirse bu bilgiler otomatik olarak geri yüklenmez.
+Profiller ve kimlik bilgileri kullanici profili silene, uygulama verisini temizleyene veya uygulamayi kaldirana kadar cihazda kalir. Android uygulama yedeklemesi kapalidir; bulut yedekleme ve cihaz aktarimi kurallari uygulama verilerini haric tutar. Uygulama kaldirilirsa veya cihaz degistirilirse bilgiler otomatik olarak geri yuklenmez.
 
-## Çocukların gizliliği
+## Iletisim ve politika yayini
 
-Uygulama çocuklara yönelik değildir ve çocuklardan bilerek kişisel bilgi toplamaz.
-
-## Değişiklikler ve iletişim
-
-Politika değişiklikleri bu dosyada yayımlanır. Google Play listelemesi tamamlanmadan önce uygulama geliştiricisinin destek/gizlilik iletişim adresi bu bölüme ve Play Console'a eklenmelidir.
+Uygulama cocuklara yonelik degildir ve cocuklardan bilerek kisisel bilgi toplamaz. Dagitimdan once gelistirici destek/gizlilik iletisim adresini eklemeli ve bu politikayi herkesin erisebildigi HTTPS kullanan bir web sayfasinda yayinlamalidir.
