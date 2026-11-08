@@ -31,10 +31,7 @@ class SshKeyImportManager(context: Context) {
                     !validPem -> Result.failure(
                         IllegalArgumentException("Dosya geçerli bir PEM/OpenSSH private key değil.")
                     )
-                    !secureStorage.storePrivateKey(profileId, keyBytes) -> Result.failure(
-                        IllegalStateException("Anahtar Android Keystore ile güvenli saklanamadı.")
-                    )
-                    else -> Result.success(Unit)
+                    else -> secureStorage.storePrivateKeyResult(profileId, keyBytes)
                 }
             }
         } catch (e: Exception) {
