@@ -76,7 +76,7 @@ class SecureKeyStorage(private val context: Context) {
     }
 
     @Synchronized
-    private fun store(name: String, cleartext: ByteArray): Boolean = try {
+    private fun storeResult(name: String, cleartext: ByteArray): Result<Unit> = try {
         require(cleartext.isNotEmpty())
         val iv = ByteArray(12).also { SecureRandom().nextBytes(it) }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
@@ -125,6 +125,8 @@ class SecureKeyStorage(private val context: Context) {
     fun deleteKnownHosts() = !file(Constants.KNOWN_HOSTS_FILENAME).exists() || file(Constants.KNOWN_HOSTS_FILENAME).delete()
 
     fun storePrivateKey(profileId: String, keyBytes: ByteArray) = store(profileKeyFile(profileId), keyBytes)
+    fun storePrivateKeyResult(profileId: String, keyBytes: ByteArray) =
+        storeResult(profileKeyFile(profileId), keyBytes)
     fun loadPrivateKey(profileId: String) = load(profileKeyFile(profileId))
     fun hasPrivateKey(profileId: String) = file(profileKeyFile(profileId)).let { it.isFile && it.length() > 28 }
     fun deletePrivateKey(profileId: String) =
