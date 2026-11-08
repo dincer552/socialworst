@@ -120,7 +120,7 @@ class TerminalActivity : ComponentActivity(), SshConnectionManager.SshCallback {
             setBackgroundColor(android.graphics.Color.BLACK)
         }
         diagnosticView = TextView(this).apply {
-            text = "SSH Client tanı günlüğü\\nBağlantı başlatılıyor…"
+            text = "SSH Client tanı günlüğü\nBağlantı başlatılıyor…"
             textSize = 10f
             typeface = android.graphics.Typeface.MONOSPACE
             setTextColor(android.graphics.Color.rgb(150, 210, 170))
@@ -202,10 +202,10 @@ class TerminalActivity : ComponentActivity(), SshConnectionManager.SshCallback {
     }
 
     private fun appendDiagnostic(message: String) {
-        val line = message.replace(Regex("[\\r\\n]+"), " ").take(240)
+        val line = message.replace(Regex("[\\r\n]+"), " ").take(240)
         diagnosticLines.addLast(line)
         while (diagnosticLines.size > 80) diagnosticLines.removeFirst()
-        diagnosticView.text = diagnosticLines.joinToString("\\n")
+        diagnosticView.text = diagnosticLines.joinToString("\n")
     }
 
     private fun retryConnection() {
