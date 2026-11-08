@@ -1,5 +1,5 @@
 # Signing pipeline verification trigger.
-name: Hattrick SSH Android APK
+name: SSH Client Android Build
 
 on:
   push:
