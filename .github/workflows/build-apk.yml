@@ -8,13 +8,16 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
     name: Build Android ARM64 APK
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    env:
+      APP_VERSION_CODE: ${{ github.run_number }}
+      APP_VERSION_NAME: 0.2.${{ github.run_number }}
 
     steps:
       - name: Checkout
@@ -61,7 +64,8 @@ jobs:
           cache-provider: basic
 
       - name: Build debug APK
-        run: gradle --no-daemon assembleDebug --stacktrace
+        run: |
+          gradle --no-daemon -PappVersionCode="$APP_VERSION_CODE" -PappVersionName="$APP_VERSION_NAME" assembleDebug --stacktrace
 
       - name: Verify packaged Android ARM64 executables
         run: |
@@ -74,10 +78,28 @@ jobs:
             file "$RUNNER_TEMP/native-check/$LIB"
           done
 
-      - name: Upload debug APK
+      - name: Prepare stable Release APK filename
+        run: |
+          APK="$(find build/outputs/apk/debug -maxdepth 1 -name '*.apk' -print -quit)"
+          test -n "$APK"
+          cp "$APK" build/outputs/apk/debug/hattrick-ssh.apk
+
+      - name: Upload debug APK artifact
         uses: actions/upload-artifact@v7
         with:
           name: hattrick-ssh-debug-apk
-          path: build/outputs/apk/debug/*.apk
+          path: build/outputs/apk/debug/hattrick-ssh.apk
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish GitHub Release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.APP_VERSION_NAME }}
+          name: Hattrick SSH v${{ env.APP_VERSION_NAME }}
+          target_commitish: main
+          make_latest: true
+          generate_release_notes: true
+          files: build/outputs/apk/debug/hattrick-ssh.apk
+          fail_on_unmatched_files: true
