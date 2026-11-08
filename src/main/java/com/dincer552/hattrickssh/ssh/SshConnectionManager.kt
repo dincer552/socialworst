@@ -50,6 +50,7 @@ class SshConnectionManager(context: Context) {
                 closed.set(false)
                 check(!connected.get()) { "An SSH session is already active." }
 
+                callback.onDiagnostic("[SSH] JSch hazırlanıyor")
                 val jsch = JSch()
                 if (profile.authenticationMethod == AuthenticationMethod.PRIVATE_KEY) {
                     privateKey = secureStorage.loadPrivateKey(profile.id)
@@ -67,6 +68,7 @@ class SshConnectionManager(context: Context) {
                 val sshSession = jsch.getSession(profile.username, profile.host, profile.port)
                 session = sshSession
                 if (profile.useCloudflareAccess) {
+                    callback.onDiagnostic("[CLOUDFLARE] cloudflared access ssh başlatılıyor")
                     val tunnel = CloudflareTunnelManager(
                         appContext,
                         onAuthUrl = { callback.onAuthRequired(it) },
@@ -113,9 +115,13 @@ class SshConnectionManager(context: Context) {
                 })
 
                 sshSession.setTimeout(Constants.CONNECT_TIMEOUT_MS)
+                callback.onDiagnostic("[SSH] ${profile.host}:${profile.port} adresine SSH bağlantısı kuruluyor")
                 sshSession.connect(Constants.CONNECT_TIMEOUT_MS)
+                callback.onDiagnostic("[SSH] SSH el sıkışması tamamlandı")
                 persistKnownHosts(jsch)
+                callback.onDiagnostic("[SSH] Host fingerprint doğrulandı")
 
+                callback.onDiagnostic("[PTY] Uzak interaktif shell açılıyor")
                 val channel = sshSession.openChannel("shell") as ChannelShell
                 shell = channel
                 channel.setPty(true)
@@ -127,6 +133,7 @@ class SshConnectionManager(context: Context) {
                     Constants.DEFAULT_PX_PER_ROW
                 )
                 channel.connect(Constants.CONNECT_TIMEOUT_MS)
+                callback.onDiagnostic("[PTY] Uzak shell hazır")
                 connected.set(true)
                 callback.onConnected()
             } catch (e: Exception) {
