@@ -1,11 +1,11 @@
-val buildVersionCode = providers.gradleProperty("appVersionCode").orNull?.toIntOrNull() ?: 2
-val buildVersionName = providers.gradleProperty("appVersionName").orNull ?: "0.2.0"
-
 plugins {
     id("com.android.application") version "8.7.3"
     id("org.jetbrains.kotlin.android") version "2.0.21"
     id("org.jetbrains.kotlin.plugin.compose") version "2.0.21"
 }
+
+val buildVersionCode = providers.gradleProperty("appVersionCode").orNull?.toIntOrNull() ?: 2
+val buildVersionName = providers.gradleProperty("appVersionName").orNull ?: "0.2.0"
 
 android {
     namespace = "com.dincer552.hattrickssh"
