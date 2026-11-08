@@ -1,3 +1,6 @@
+val buildVersionCode = providers.gradleProperty("appVersionCode").orNull?.toIntOrNull() ?: 2
+val buildVersionName = providers.gradleProperty("appVersionName").orNull ?: "0.2.0"
+
 plugins {
     id("com.android.application") version "8.7.3"
     id("org.jetbrains.kotlin.android") version "2.0.21"
@@ -12,8 +15,8 @@ android {
         applicationId = "com.dincer552.hattrickssh"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = buildVersionCode
+        versionName = buildVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
