@@ -91,10 +91,17 @@ class SecureKeyStorage(private val context: Context) {
             target.delete()
             check(temp.renameTo(target)) { "Atomic credential save failed" }
         }
-        true
-    } catch (_: Exception) {
-        false
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Result.failure(IllegalStateException(
+            "Güvenli anahtar kaydı başarısız (" + e.javaClass.simpleName + "): " +
+                (e.message ?: "Android Keystore veya dosya sistemi hatası"), e
+        ))
     }
+
+    @Synchronized
+    private fun store(name: String, cleartext: ByteArray): Boolean =
+        storeResult(name, cleartext).isSuccess
 
     @Synchronized
     private fun load(name: String): ByteArray? {
