@@ -79,6 +79,8 @@ dependencies {
 
     // Termux VT emulator/view provides a real ANSI/VT terminal UI.
     implementation("com.termux.termux-app:terminal-view:0.118.0")
+    // ProfileInstaller references ResolvableFuture; package the real AndroidX class.
+    implementation("androidx.concurrent:concurrent-futures:1.2.0")
     implementation("com.google.guava:listenablefuture:9999.0-empty-to-avoid-conflict-with-guava")
 
     testImplementation("junit:junit:4.13.2")
