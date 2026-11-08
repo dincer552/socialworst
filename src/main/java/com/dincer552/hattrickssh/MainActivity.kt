@@ -7,7 +7,6 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -34,7 +33,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.*
-import androidx.compose.ui.platform.LocalUriHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -85,6 +83,7 @@ private fun MainScreen(onConnect: () -> Unit) {
     var downloadId by remember { mutableStateOf<Long?>(null) }
     var downloadPercent by remember { mutableIntStateOf(0) }
     var pendingInstallUri by remember { mutableStateOf<Uri?>(null) }
+    var updateCheckRequest by remember { mutableIntStateOf(0) }
 
     val installPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -99,7 +98,7 @@ private fun MainScreen(onConnect: () -> Unit) {
         }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(updateCheckRequest) {
         try {
             val update = AppUpdateManager.checkForUpdate()
             availableUpdate = update
@@ -285,12 +284,12 @@ private fun MainScreen(onConnect: () -> Unit) {
                     onClick = {
                         updateStatus = "Güncelleme kontrol ediliyor…"
                         updateError = null
-                        // Recreate the screen check through the explicit retry coroutine below.
+                        updateCheckRequest++
                     },
                     modifier = Modifier.fillMaxWidth().height(38.dp),
                     shape = RoundedCornerShape(10.dp)
                 ) {
-                    Text("GÜNCELLEME KONTROLÜ BAŞARISIZ", fontSize = 10.sp)
+                    Text("TEKRAR DENE", fontSize = 10.sp)
                 }
             }
 
