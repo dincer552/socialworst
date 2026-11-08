@@ -6,7 +6,7 @@ plugins {
 
 val buildVersionCode = providers.gradleProperty("appVersionCode").orNull?.toIntOrNull() ?: 2
 val buildVersionName = providers.gradleProperty("appVersionName").orNull ?: "0.2.0"
-val ciSigningStorePath = System.getenv("ANDROID_KEYSTORE_PATH")
+val signingStorePath = System.getenv("ANDROID_KEYSTORE_PATH")
 
 android {
     namespace = "com.dincer552.hattrickssh"
@@ -18,6 +18,7 @@ android {
         targetSdk = 36
         versionCode = buildVersionCode
         versionName = buildVersionName
+        buildConfigField("boolean", "PLAY_DISTRIBUTION", "false")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
@@ -25,22 +26,10 @@ android {
         }
     }
 
-    flavorDimensions += "distribution"
-    productFlavors {
-        create("github") {
-            dimension = "distribution"
-            buildConfigField("boolean", "PLAY_DISTRIBUTION", "false")
-        }
-        create("play") {
-            dimension = "distribution"
-            buildConfigField("boolean", "PLAY_DISTRIBUTION", "true")
-        }
-    }
-
     signingConfigs {
-        create("playUpload") {
-            if (!ciSigningStorePath.isNullOrBlank()) {
-                storeFile = file(ciSigningStorePath)
+        create("releaseKey") {
+            if (!signingStorePath.isNullOrBlank()) {
+                storeFile = file(signingStorePath)
                 storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
                 keyAlias = "hattrickssh"
                 keyPassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
@@ -50,12 +39,13 @@ android {
 
     buildTypes {
         debug {
+            applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
         }
         release {
             isMinifyEnabled = false
-            if (!ciSigningStorePath.isNullOrBlank()) {
-                signingConfig = signingConfigs.getByName("playUpload")
+            if (!signingStorePath.isNullOrBlank()) {
+                signingConfig = signingConfigs.getByName("releaseKey")
             }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -80,10 +70,10 @@ android {
 
     packaging {
         jniLibs {
-            // Android 10+ blocks exec() from the writable app home directory.
-            // Extract APK-packaged executable payloads to nativeLibraryDir.
+            // Android 10+ (API 29+) blocks executing files from the writable app home (filesDir).
+            // Keep cloudflared/sshbridge in jniLibs so the Package Manager extracts them to
+            // nativeLibraryDir, which is executable on every target SDK.
             useLegacyPackaging = true
-            keepDebugSymbols += setOf("**/libcloudflared.so", "**/libsshbridge.so")
         }
         resources {
             excludes += setOf(
@@ -110,8 +100,6 @@ dependencies {
 
     // Termux VT emulator/view provides a real ANSI/VT terminal UI.
     implementation("com.termux.termux-app:terminal-view:0.118.0")
-    // ProfileInstaller references ResolvableFuture; package the real AndroidX class.
-    implementation("androidx.concurrent:concurrent-futures:1.2.0")
     implementation("com.google.guava:listenablefuture:9999.0-empty-to-avoid-conflict-with-guava")
 
     testImplementation("junit:junit:4.13.2")

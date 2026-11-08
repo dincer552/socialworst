@@ -79,11 +79,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        playUpdateManager = AppUpdateManagerFactory.create(this)
-        updateLauncher = registerForActivityResult(
-            ActivityResultContracts.StartIntentSenderForResult()
-        ) { result ->
-            if (result.resultCode != Activity.RESULT_OK) checkForPlayUpdate()
+        if (BuildConfig.PLAY_DISTRIBUTION) {
+            playUpdateManager = AppUpdateManagerFactory.create(this)
+            updateLauncher = registerForActivityResult(
+                ActivityResultContracts.StartIntentSenderForResult()
+            ) { result ->
+                if (result.resultCode != Activity.RESULT_OK) checkForPlayUpdate()
+            }
         }
         setContent {
             MaterialTheme(
@@ -168,14 +170,13 @@ private fun MainScreen(
     var githubUpdate by remember { mutableStateOf<ReleaseUpdate?>(null) }
     var githubUpdateStatus by remember { mutableStateOf("Güncelleme kontrol ediliyor…") }
     var updateError by remember { mutableStateOf<String?>(null) }
-    var updateCheckRequest by remember { mutableIntStateOf(0) }
     var downloadId by remember { mutableStateOf<Long?>(null) }
     var downloadPercent by remember { mutableIntStateOf(0) }
     var pendingInstallUri by remember { mutableStateOf<Uri?>(null) }
     var isCheckingUpdate by remember { mutableStateOf(false) }
     val updateScope = rememberCoroutineScope()
     val checkGitHubUpdates: () -> Unit = {
-        if (!BuildConfig.PLAY_DISTRIBUTION && !isCheckingUpdate) {
+        if (!BuildConfig.DEBUG && !BuildConfig.PLAY_DISTRIBUTION && !isCheckingUpdate) {
             isCheckingUpdate = true
             updateError = null
             updateScope.launch {
@@ -192,7 +193,7 @@ private fun MainScreen(
         }
     }
 
-    LaunchedEffect(updateCheckRequest) {
+    LaunchedEffect(Unit) {
         store.migrateLegacyInstallIfNeeded()
         profiles = store.all()
     }
@@ -220,7 +221,8 @@ private fun MainScreen(
     }
 
     LaunchedEffect(Unit) {
-        if (!BuildConfig.PLAY_DISTRIBUTION) {
+        if (!BuildConfig.DEBUG && !BuildConfig.PLAY_DISTRIBUTION) {
+            isCheckingUpdate = true
             try {
                 githubUpdate = AppUpdateManager.checkForUpdate()
                 githubUpdateStatus = if (githubUpdate == null) "Uygulama güncel" else "Yeni sürüm ${githubUpdate?.versionName}"
@@ -229,6 +231,7 @@ private fun MainScreen(
                 githubUpdateStatus = "Güncelleme kontrol edilemedi"
                 updateError = error.message ?: "Ağ bağlantısı hatası"
             }
+            isCheckingUpdate = false
         }
     }
 
@@ -331,15 +334,23 @@ private fun MainScreen(
             if (!BuildConfig.PLAY_DISTRIBUTION) {
                 OutlinedButton(
                     onClick = checkGitHubUpdates,
-                    enabled = !isCheckingUpdate && downloadId == null,
+                    enabled = !BuildConfig.DEBUG && !isCheckingUpdate && downloadId == null,
                     modifier = Modifier.fillMaxWidth()
-                ) { Text(if (isCheckingUpdate) "G\u00FCncellemeler kontrol ediliyor..." else "G\u00FCncellemeleri kontrol et") }
+                ) {
+                    Text(
+                        when {
+                            BuildConfig.DEBUG -> "Release APK required for updates"
+                            isCheckingUpdate -> "G\u00FCncellemeler kontrol ediliyor..."
+                            else -> "G\u00FCncellemeleri kontrol et"
+                        }
+                    )
+                }
             }
             val updateStatus = if (BuildConfig.PLAY_DISTRIBUTION) playUpdateStatus else githubUpdateStatus
             Text("${BuildConfig.VERSION_NAME} • $updateStatus", color = AppMuted, fontSize = 10.sp)
             if (BuildConfig.PLAY_DISTRIBUTION && playUpdateAvailable) {
                 OutlinedButton(onClick = onPlayUpdate, modifier = Modifier.fillMaxWidth()) { Text("PLAY STORE'DAN GÜNCELLE") }
-            } else if (!BuildConfig.PLAY_DISTRIBUTION && githubUpdate != null && downloadId == null) {
+            } else if (!BuildConfig.DEBUG && !BuildConfig.PLAY_DISTRIBUTION && githubUpdate != null && downloadId == null) {
                 OutlinedButton(
                     onClick = {
                         updateError = null
@@ -347,7 +358,7 @@ private fun MainScreen(
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("İMZALI APK'Yİ GÜNCELLE • ${githubUpdate!!.versionName}") }
-            } else if (!BuildConfig.PLAY_DISTRIBUTION && updateError != null && downloadId == null) {
+            } else if (!BuildConfig.DEBUG && !BuildConfig.PLAY_DISTRIBUTION && updateError != null && downloadId == null) {
                 OutlinedButton(
                     onClick = checkGitHubUpdates,
                     modifier = Modifier.fillMaxWidth()

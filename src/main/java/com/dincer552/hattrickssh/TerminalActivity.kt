@@ -245,7 +245,7 @@ class TerminalActivity : ComponentActivity(), SshConnectionManager.SshCallback {
 
     private fun packagedBridge(): File {
         val nativeDirectory = File(applicationInfo.nativeLibraryDir)
-        val bridge = File(nativeDirectory, Constants.SSHBRIDGE_NATIVE_LIB_NAME)
+        val bridge = File(nativeDirectory, Constants.SSHBRIDGE_LIB_NAME)
         check(bridge.isFile && bridge.canExecute()) {
             "Android native PTY bridge is unavailable or not executable in nativeLibraryDir."
         }

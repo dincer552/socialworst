@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="margin_small">8dp</dimen>
+    <dimen name="margin_medium">16dp</dimen>
+    <dimen name="margin_large">24dp</dimen>
+    <dimen name="button_height">52dp</dimen>
+    <dimen name="card_corner">12dp</dimen>
+    <dimen name="terminal_font_size">12sp</dimen>
+    <dimen name="title_font_size">21sp</dimen>
+    <dimen name="body_font_size">14sp</dimen>
+    <dimen name="label_font_size">11sp</dimen>
+</resources>

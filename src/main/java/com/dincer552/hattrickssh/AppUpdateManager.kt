@@ -14,7 +14,7 @@ import java.net.URL
 data class ReleaseUpdate(val versionCode: Int, val versionName: String, val apkUrl: String)
 data class DownloadSnapshot(val status: Int, val progressPercent: Int)
 
-/** GitHub APK updater. The Play flavor does not invoke this class or request install permission. */
+/** GitHub Release updater for user-approved signed APK installations. */
 object AppUpdateManager {
     private const val RELEASE_API = "https://api.github.com/repos/dincer552/socialworst/releases/latest"
     private const val APK_ASSET_NAME = "ssh-client.apk"

@@ -1,7 +1,7 @@
 #define _DEFAULT_SOURCE 1
 
 /*
- * SSH Client PTY socket bridge.
+ * SSH Client PTY bridge.
  *
  * Runs as the child process of the local terminal emulator. Its stdin/stdout
  * are connected to a PTY; it bridges those bytes to a loopback TCP socket

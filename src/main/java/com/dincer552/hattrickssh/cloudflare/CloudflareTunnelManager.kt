@@ -45,7 +45,7 @@ class CloudflareTunnelManager(
     @Synchronized
     private fun start(hostname: String) {
         stop()
-        val binary = packagedExecutable(Constants.CLOUDFLARED_NATIVE_LIB_NAME)
+        val binary = packagedExecutable(Constants.CLOUDFLARED_LIB_NAME)
         val home = File(appContext.filesDir, "cloudflared-home")
         val config = File(home, ".cloudflared")
         check(config.exists() || config.mkdirs()) { "Cloudflare private config directory could not be created" }

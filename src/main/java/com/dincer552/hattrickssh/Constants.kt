@@ -1,6 +1,7 @@
 package com.dincer552.hattrickssh
 
 object Constants {
+    const val DEFAULT_PORT = 22
     const val TAG = "SshClient"
 
     const val SSH_KEY_DIR = "ssh_keys"
@@ -10,8 +11,8 @@ object Constants {
     const val KEYSTORE_ALIAS = "hattrick_ssh_aes_key_v1"
     const val KEYSTORE_PROVIDER = "AndroidKeyStore"
 
-    const val CLOUDFLARED_NATIVE_LIB_NAME = "libcloudflared.so"
-    const val SSHBRIDGE_NATIVE_LIB_NAME = "libsshbridge.so"
+    const val CLOUDFLARED_LIB_NAME = "libcloudflared.so"
+    const val SSHBRIDGE_LIB_NAME = "libsshbridge.so"
 
     const val CONNECT_TIMEOUT_MS = 180_000
     const val DEFAULT_ROWS = 28
