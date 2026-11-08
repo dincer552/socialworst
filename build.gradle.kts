@@ -100,7 +100,6 @@ dependencies {
 
     // Termux VT emulator/view provides a real ANSI/VT terminal UI.
     implementation("com.termux.termux-app:terminal-view:0.118.0")
-    implementation("com.google.guava:listenablefuture:9999.0-empty-to-avoid-conflict-with-guava")
 
     testImplementation("junit:junit:4.13.2")
     debugImplementation("androidx.compose.ui:ui-tooling")
