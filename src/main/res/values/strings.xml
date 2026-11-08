@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Hattrick SSH</string>
+    <string name="server_name">ssh.dinceryuksek.com</string>
+    <string name="server_port">22</string>
+    <string name="username">azureuser</string>
+    <string name="status_connected">Bağlı</string>
+    <string name="status_disconnected">Bağlı değil</string>
+    <string name="status_connecting">Bağlanıyor…</string>
+    <string name="btn_connect">BAĞLAN</string>
+    <string name="btn_disconnect">BAĞLANTIYI KES</string>
+    <string name="btn_import_key">SSH KEY SEÇ</string>
+    <string name="btn_settings">AYARLAR</string>
+    <string name="label_host">Sunucu</string>
+    <string name="label_port">Port</string>
+    <string name="label_username">Kullanıcı</string>
+    <string name="label_private_key">Özel anahtar</string>
+    <string name="hint_select_key">Anahtar dosyası seçin</string>
+    <string name="msg_connected">Bağlantı kuruldu</string>
+    <string name="msg_disconnected">Bağlantı kesildi</string>
+    <string name="msg_connecting">Bağlantı kuruluyor…</string>
+    <string name="msg_error_connection_failed">Bağlantı başarısız</string>
+    <string name="msg_error_key_required">SSH anahtarı gerekli</string>
+    <string name="msg_host_key_verify">Sunucu kimlik doğrulaması</string>
+    <string name="label_host_fingerprint">Sunucu parmak izi</string>
+    <string name="btn_authenticate">Kimlik doğrula</string>
+    <string name="action_settings">Ayarlar</string>
+</resources>
