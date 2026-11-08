@@ -1,5 +1,6 @@
 package com.dincer552.hattrickssh
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.DownloadManager
 import android.content.Intent
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -77,6 +79,7 @@ class MainActivity : ComponentActivity() {
     private var playUpdateAvailable by mutableStateOf(false)
     private var playUpdateStatus by mutableStateOf("Play Store güncellemeleri yönetir")
 
+    @SuppressLint("InvalidFragmentVersionForActivityResult")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (BuildConfig.PLAY_DISTRIBUTION) {
@@ -272,7 +275,7 @@ private fun MainScreen(
 
     Surface(Modifier.fillMaxSize(), color = AppBackground) {
         Column(
-            Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 18.dp),
+            Modifier.fillMaxSize().systemBarsPadding().padding(horizontal = 18.dp, vertical = 18.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
