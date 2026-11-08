@@ -6,6 +6,7 @@ plugins {
 
 val buildVersionCode = providers.gradleProperty("appVersionCode").orNull?.toIntOrNull() ?: 2
 val buildVersionName = providers.gradleProperty("appVersionName").orNull ?: "0.2.0"
+val ciSigningStorePath = System.getenv("ANDROID_KEYSTORE_PATH")
 
 android {
     namespace = "com.dincer552.hattrickssh"
@@ -24,9 +25,23 @@ android {
         }
     }
 
+    signingConfigs {
+        create("githubUpdate") {
+            if (!ciSigningStorePath.isNullOrBlank()) {
+                storeFile = file(ciSigningStorePath)
+                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = "hattrickssh"
+                keyPassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             versionNameSuffix = "-debug"
+            if (!ciSigningStorePath.isNullOrBlank()) {
+                signingConfig = signingConfigs.getByName("githubUpdate")
+            }
         }
         release {
             isMinifyEnabled = false
