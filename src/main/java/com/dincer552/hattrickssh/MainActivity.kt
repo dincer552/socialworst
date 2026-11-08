@@ -1,8 +1,13 @@
 package com.dincer552.hattrickssh
 
+import android.app.DownloadManager
 import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -22,12 +27,17 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalUriHandler
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -69,6 +79,87 @@ private fun MainScreen(onConnect: () -> Unit) {
     val keyManager = remember { SshKeyImportManager(context.applicationContext) }
     var keyImported by remember { mutableStateOf(keyManager.hasPrivateKey()) }
     var showSettings by remember { mutableStateOf(false) }
+    var availableUpdate by remember { mutableStateOf<ReleaseUpdate?>(null) }
+    var updateStatus by remember { mutableStateOf("Güncelleme kontrol ediliyor…") }
+    var updateError by remember { mutableStateOf<String?>(null) }
+    var downloadId by remember { mutableStateOf<Long?>(null) }
+    var downloadPercent by remember { mutableIntStateOf(0) }
+    var pendingInstallUri by remember { mutableStateOf<Uri?>(null) }
+
+    val installPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        val uri = pendingInstallUri
+        if (uri != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            context.packageManager.canRequestPackageInstalls()
+        ) {
+            openApkInstaller(context, uri)
+        } else if (uri != null) {
+            updateError = "APK kurulum izni verilmedi."
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        try {
+            val update = AppUpdateManager.checkForUpdate()
+            availableUpdate = update
+            updateStatus = if (update == null) "Uygulama güncel" else "Yeni sürüm: ${update.versionName}"
+            updateError = null
+        } catch (error: Exception) {
+            updateStatus = "Güncelleme kontrol edilemedi"
+            updateError = error.message ?: "Bağlantı hatası"
+        }
+    }
+
+    LaunchedEffect(downloadId) {
+        val id = downloadId ?: return@LaunchedEffect
+        while (true) {
+            val snapshot = withContext(Dispatchers.IO) {
+                AppUpdateManager.getDownloadSnapshot(context, id)
+            }
+            if (snapshot == null) {
+                updateError = "İndirme durumu okunamadı."
+                downloadId = null
+                break
+            }
+            downloadPercent = snapshot.progressPercent
+            when (snapshot.status) {
+                DownloadManager.STATUS_SUCCESSFUL -> {
+                    val uri = withContext(Dispatchers.IO) {
+                        AppUpdateManager.getDownloadedUri(context, id)
+                    }
+                    downloadId = null
+                    if (uri == null) {
+                        updateError = "İndirilen APK dosyası bulunamadı."
+                    } else {
+                        pendingInstallUri = uri
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                            !context.packageManager.canRequestPackageInstalls()
+                        ) {
+                            installPermissionLauncher.launch(
+                                Intent(
+                                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                    Uri.parse("package:${context.packageName}")
+                                )
+                            )
+                        } else {
+                            openApkInstaller(context, uri)
+                        }
+                    }
+                    break
+                }
+                DownloadManager.STATUS_FAILED -> {
+                    updateError = "APK indirilemedi. İnternet bağlantısını kontrol edip tekrar dene."
+                    downloadId = null
+                    break
+                }
+                else -> {
+                    updateStatus = "İndiriliyor… %${downloadPercent}"
+                    delay(450)
+                }
+            }
+        }
+    }
 
     val keyPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -167,6 +258,53 @@ private fun MainScreen(onConnect: () -> Unit) {
                 Text("BAĞLANTI AYARLARI", fontSize = 11.sp)
             }
 
+            Text(
+                "Sürüm ${BuildConfig.VERSION_NAME} • $updateStatus",
+                color = if (availableUpdate != null) AppGreen else AppMuted,
+                fontSize = 10.sp
+            )
+
+            if (availableUpdate != null && downloadId == null) {
+                OutlinedButton(
+                    onClick = {
+                        updateError = null
+                        downloadPercent = 0
+                        try {
+                            downloadId = AppUpdateManager.enqueueDownload(context, availableUpdate!!)
+                        } catch (error: Exception) {
+                            updateError = error.message ?: "İndirme başlatılamadı."
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().height(42.dp),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("GÜNCELLE • ${availableUpdate!!.versionName}", fontSize = 11.sp)
+                }
+            } else if (availableUpdate == null && updateError != null) {
+                OutlinedButton(
+                    onClick = {
+                        updateStatus = "Güncelleme kontrol ediliyor…"
+                        updateError = null
+                        // Recreate the screen check through the explicit retry coroutine below.
+                    },
+                    modifier = Modifier.fillMaxWidth().height(38.dp),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("GÜNCELLEME KONTROLÜ BAŞARISIZ", fontSize = 10.sp)
+                }
+            }
+
+            if (downloadId != null) {
+                LinearProgressIndicator(
+                    progress = { downloadPercent / 100f },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text("APK indiriliyor: %${downloadPercent}", color = AppGreen, fontSize = 10.sp)
+            }
+            updateError?.let {
+                Text(it, color = Color(0xFFFF8A80), fontSize = 10.sp)
+            }
+
             Spacer(Modifier.weight(1f))
             Text(
                 "Private key cihaz içinde Android Keystore ile şifrelenir. GitHub'a yüklenmez.",
@@ -193,4 +331,14 @@ private fun MainScreen(onConnect: () -> Unit) {
             containerColor = AppPanel
         )
     }
+}
+
+
+private fun openApkInstaller(context: android.content.Context, apkUri: Uri) {
+    val installIntent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
+        data = apkUri
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
+    }
+    context.startActivity(installIntent)
 }
