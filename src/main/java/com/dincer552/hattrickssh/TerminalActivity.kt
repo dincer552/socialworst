@@ -160,7 +160,7 @@ class TerminalActivity : ComponentActivity(), SshConnectionManager.SshCallback {
         )
         terminalView = TerminalView(this, null).apply {
             setBackgroundColor(android.graphics.Color.BLACK)
-            setTextSize(terminalFontSize)
+            setTextSize(terminalFontSize.toInt())
             setTerminalViewClient(createTerminalViewClient())
             isFocusable = true
             isFocusableInTouchMode = true
