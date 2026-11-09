@@ -226,7 +226,7 @@ class TerminalActivity : ComponentActivity(), SshConnectionManager.SshCallback {
 
     private fun changeTerminalFontSize(delta: Float) {
         terminalFontSize = (terminalFontSize + delta).coerceIn(11f, 22f)
-        terminalView.setTextSize(terminalFontSize)
+        terminalView.setTextSize(terminalFontSize.toInt())
         getSharedPreferences("terminal_display", MODE_PRIVATE)
             .edit().putFloat("font_size", terminalFontSize).apply()
         appendDiagnostic("[EKRAN] Terminal yazı boyutu: ${terminalFontSize.toInt()}")
