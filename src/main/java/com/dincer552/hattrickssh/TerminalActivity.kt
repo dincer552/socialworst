@@ -36,6 +36,7 @@ class TerminalActivity : ComponentActivity(), SshConnectionManager.SshCallback {
     private lateinit var statusView: TextView
     private lateinit var diagnosticView: TextView
     private val diagnosticLines = ArrayDeque<String>()
+    private var terminalFontSize = 14f
     private var terminalSession: TerminalSession? = null
     private var localServer: ServerSocket? = null
     private var tearingDown = false
@@ -94,6 +95,24 @@ class TerminalActivity : ComponentActivity(), SshConnectionManager.SshCallback {
         titleColumn.addView(statusView)
         header.addView(titleColumn, LinearLayout.LayoutParams(0, dp(48), 1f))
 
+        val fontDownButton = Button(this).apply {
+            text = "A−"
+            textSize = 11f
+            minWidth = dp(42)
+            setPadding(dp(2), 0, dp(2), 0)
+            setOnClickListener { changeTerminalFontSize(-1f) }
+        }
+        header.addView(fontDownButton, LinearLayout.LayoutParams(dp(42), dp(42)))
+
+        val fontUpButton = Button(this).apply {
+            text = "A+"
+            textSize = 11f
+            minWidth = dp(42)
+            setPadding(dp(2), 0, dp(2), 0)
+            setOnClickListener { changeTerminalFontSize(1f) }
+        }
+        header.addView(fontUpButton, LinearLayout.LayoutParams(dp(42), dp(42)))
+
         val retryButton = Button(this).apply {
             text = "TEKRAR"
             textSize = 9f
@@ -119,12 +138,16 @@ class TerminalActivity : ComponentActivity(), SshConnectionManager.SshCallback {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(android.graphics.Color.BLACK)
         }
+        terminalFontSize = getSharedPreferences("terminal_display", MODE_PRIVATE)
+            .getFloat("font_size", 14f).coerceIn(11f, 22f)
+
         diagnosticView = TextView(this).apply {
             text = "SSH Client tanı günlüğü\nBağlantı başlatılıyor…"
-            textSize = 10f
+            textSize = 11f
             typeface = android.graphics.Typeface.MONOSPACE
-            setTextColor(android.graphics.Color.rgb(150, 210, 170))
-            setPadding(dp(8), dp(6), dp(8), dp(6))
+            setTextColor(android.graphics.Color.rgb(190, 230, 205))
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+            setLineSpacing(dp(2).toFloat(), 1.0f)
             setTextIsSelectable(true)
         }
         val diagnosticScroll = android.widget.ScrollView(this).apply {
@@ -137,7 +160,7 @@ class TerminalActivity : ComponentActivity(), SshConnectionManager.SshCallback {
         )
         terminalView = TerminalView(this, null).apply {
             setBackgroundColor(android.graphics.Color.BLACK)
-            setTextSize(12)
+            setTextSize(terminalFontSize)
             setTerminalViewClient(createTerminalViewClient())
             isFocusable = true
             isFocusableInTouchMode = true
@@ -199,6 +222,14 @@ class TerminalActivity : ComponentActivity(), SshConnectionManager.SshCallback {
         )
         params.marginEnd = dp(3)
         parent.addView(button, params)
+    }
+
+    private fun changeTerminalFontSize(delta: Float) {
+        terminalFontSize = (terminalFontSize + delta).coerceIn(11f, 22f)
+        terminalView.setTextSize(terminalFontSize)
+        getSharedPreferences("terminal_display", MODE_PRIVATE)
+            .edit().putFloat("font_size", terminalFontSize).apply()
+        appendDiagnostic("[EKRAN] Terminal yazı boyutu: ${terminalFontSize.toInt()}")
     }
 
     private fun appendDiagnostic(message: String) {
