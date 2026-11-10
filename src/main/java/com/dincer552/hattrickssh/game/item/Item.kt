@@ -1,5 +1,7 @@
 package com.dincer552.hattrickssh.game.item
 
+import com.dincer552.hattrickssh.game.*
+
 /** ItemType - Types of collectible items. */
 enum class ItemType {
     ONE_UP,       // Extra life
@@ -63,13 +65,13 @@ object ItemRegistry {
 
 /** Item - A collectible item in the game world. */
 class Item(
-    position: com.dincer552.hattrickssh.game.character.GamePosition,
+    position: GamePosition,
     val type: ItemType,
     private val data: ItemData
-) : com.dincer552.hattrickssh.game.GameObject(
+) : GameObject(
     position,
-    com.dincer552.hattrickssh.game.character.GameVelocity(0f, 0f),
-    com.dincer552.hattrickssh.game.character.GameRect(
+    GameVelocity(0f, 0f),
+    GameRect(
         position.x, position.y, position.x + data.size, position.y + data.size
     ),
     isActive = true
@@ -79,7 +81,7 @@ class Item(
     private var floatDirection: Float = 1f
 
     init {
-        collisionRect = com.dincer552.hattrickssh.game.character.GameRect(
+        collisionRect = GameRect(
             position.x, position.y, position.x + data.size, position.y + data.size
         )
     }
@@ -99,7 +101,7 @@ class Item(
     }
 
     /** Update item animation (floating effect). */
-    fun update(deltaTime: Float) {
+    override fun update(deltaTime: Float) {
         if (collected || !isActive) return
 
         floatOffset += deltaTime * 2f * floatDirection

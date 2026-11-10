@@ -423,7 +423,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
     }
 
     /** Called by Activity to draw frame. */
-    fun draw(canvas: Canvas) {
+    override fun draw(canvas: Canvas) {
         // Clear screen
         gameRenderer.clearScreen(canvas)
 

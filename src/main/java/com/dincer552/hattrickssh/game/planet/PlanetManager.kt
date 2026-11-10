@@ -16,31 +16,23 @@ enum class GamePhase {
 /** PlanetProgress - Tracks progress for a specific planet. */
 data class PlanetProgress(
     val type: PlanetType,
-    val currentAct: Int = 1,
-    val actsCompleted: Int = 0,
-    val bossDefeated: Boolean = false,
-    val crewRescued: Boolean = false,
-    val planetCompleted: Boolean = false
+    var currentAct: Int = 1,
+    var actsCompleted: Int = 0,
+    var bossDefeated: Boolean = false,
+    var crewRescued: Boolean = false,
+    var planetCompleted: Boolean = false
 )
 
 /** MothershipProgress - Tracks progress in the Toad Mothership second half. */
 data class MothershipProgress(
-    val currentStage: MothershipStage = MothershipStage.CELL,
-    val stagesCompleted: Int = 0,
-    val crewRescuedInMothership: Int = 0,
-    val mothershipCompleted: Boolean = false
+    var currentStage: MothershipStage = MothershipStage.CELL,
+    var stagesCompleted: Int = 0,
+    var crewRescuedInMothership: Int = 0,
+    var mothershipCompleted: Boolean = false
 )
 
-/** PlanetManager - Manages planet selection, progression, and Blinky dependency.
- *
- * Responsibilities:
- * - Track which planets are accessible (Blinky required for Blue Planet)
- * * Track act progression within each planet
- * * Handle boss fights and crew rescue
- * * Manage transition to Toad Mothership second half
- * * Save/load planet progress
- */
-class PlanetManager(private val characterManager: com.dincer552.hattrickssh.game.character.CharacterManager) {
+/** PlanetManager - Manages planet selection, progression, and Blinky dependency. */
+class PlanetManager(private val characterManager: CharacterManager) {
 
     // Current game phase
     private var gamePhase: GamePhase = GamePhase.PLANET_SELECTION
@@ -99,7 +91,7 @@ class PlanetManager(private val characterManager: com.dincer552.hattrickssh.game
 
     /** Get all planets with their accessibility status. */
     fun getPlanetStatuses(): List<Pair<PlanetType, Boolean>> {
-        return PlanetRegistry.allTypes.map { type to PlanetRegistry.isAccessible(type, characterManager) }
+        return PlanetRegistry.allTypes.map { it to PlanetRegistry.isAccessible(it, characterManager) }
     }
 
     /** Check if a planet can be selected. */
@@ -141,18 +133,16 @@ class PlanetManager(private val characterManager: com.dincer552.hattrickssh.game
     fun completeAct() {
         val planet = selectedPlanet ?: return
         val progress = planetProgress[planet]!!
-        
+
         if (currentAct < progress.actsCompleted + 1) {
-            // Don't go backwards
             return
         }
-        
+
         progress.actsCompleted = maxOf(progress.actsCompleted, currentAct)
-        
+
         if (currentAct < PlanetRegistry.get(planet).numActs) {
             currentAct++
         } else {
-            // All acts complete, move to boss
             gamePhase = GamePhase.BOSS_FIGHT
         }
     }
@@ -162,8 +152,6 @@ class PlanetManager(private val characterManager: com.dincer552.hattrickssh.game
         val planet = selectedPlanet ?: return
         val progress = planetProgress[planet]!!
         progress.bossDefeated = true
-        
-        // Trigger crew rescue
         gamePhase = GamePhase.RESCUE_SEQUENCE
     }
 
@@ -173,16 +161,13 @@ class PlanetManager(private val characterManager: com.dincer552.hattrickssh.game
         val progress = planetProgress[planet]!!
         progress.crewRescued = true
         progress.planetCompleted = true
-        
-        // Rescue the crew member via character manager
+
         val planetData = PlanetRegistry.get(planet)
         val crewType = planetToCharacterType(planetData.crewMember)
         characterManager.rescue(crewType)
-        
-        // Check if all planets are complete
+
         if (allPlanetsCompleted()) {
             gamePhase = GamePhase.MOTHERSHIP
-            // Start mothership from Cell stage
             mothershipProgress.currentStage = MothershipStage.CELL
         } else {
             gamePhase = GamePhase.PLANET_SELECTION
@@ -217,26 +202,25 @@ class PlanetManager(private val characterManager: com.dincer552.hattrickssh.game
     fun completeMothershipStage() {
         val current = mothershipProgress.currentStage
         val progress = mothershipProgress
-        
-        // Rescue crew member if this stage has one
+
         val stageData = MothershipRegistry.get(current)
         if (stageData.hasRescue && stageData.rescueTarget != null) {
-            val crewType = planetToCharacterType(stageData.rescueTarget!!)
+            val crewType = planetToCharacterType(stageData.rescueTarget)
             characterManager.rescue(crewType)
             progress.crewRescuedInMothership++
         }
-        
-        progress.stagesCompleted = maxOf(progress.stagesCompleted, 
-            MothershipRegistry.allStages.indexOf(current) + 1)
-        
-        // Move to next stage
+
+        progress.stagesCompleted = maxOf(
+            progress.stagesCompleted,
+            MothershipRegistry.allStages.indexOf(current) + 1
+        )
+
         val allStages = MothershipRegistry.allStages
         val currentIndex = allStages.indexOf(current)
-        
+
         if (currentIndex < allStages.size - 1) {
             mothershipProgress.currentStage = allStages[currentIndex + 1]
         } else {
-            // All stages complete
             progress.mothershipCompleted = true
             gamePhase = GamePhase.GAME_COMPLETE
         }
@@ -248,68 +232,31 @@ class PlanetManager(private val characterManager: com.dincer552.hattrickssh.game
     val getCurrentMothershipData: MothershipData?
         get() = MothershipRegistry.get(mothershipProgress.currentStage)
 
-    // ========================================================================
-    // Helper: Map crew member name to CharacterType
-    // ========================================================================
-
-    private fun planetToCharacterType(crewMember: String): com.dincer552.hattrickssh.game.character.CharacterType {
+    private fun planetToCharacterType(crewMember: String): CharacterType {
         return when (crewMember) {
-            "A.F.C. Blinky" -> com.dincer552.hattrickssh.game.character.CharacterType.BLINKY
-            "Dead-Eye Duck" -> com.dincer552.hattrickssh.game.character.CharacterType.DEAD_EYE
-            "Jenny" -> com.dincer552.hattrickssh.game.character.CharacterType.JENNY
-            "Willy DuWitt" -> com.dincer552.hattrickssh.game.character.CharacterType.WILLY
-            else -> com.dincer552.hattrickssh.game.character.CharacterType.BUCKY
+            "A.F.C. Blinky" -> CharacterType.BLINKY
+            "Dead-Eye Duck" -> CharacterType.DEAD_EYE
+            "Jenny" -> CharacterType.JENNY
+            "Willy DuWitt" -> CharacterType.WILLY
+            else -> CharacterType.BUCKY
         }
     }
 
-    // ========================================================================
-    // Save/Load Support
-    // ========================================================================
-
-    /** Get serializable state for saving. */
     fun saveState(): Map<String, Any> {
-        return mapOf(
-            "gamePhase" to gamePhase.name,
-            "selectedPlanet" to selectedPlanet?.name,
-            "currentAct" to currentAct,
-            "planetProgress" to planetProgress.mapValues { it.value.actsCompleted to it.value.bossDefeated to it.value.crewRescued to it.value.planetCompleted },
-            "mothershipProgress" to mapOf(
-                "currentStage" to mothershipProgress.currentStage.name,
-                "stagesCompleted" to mothershipProgress.stagesCompleted,
-                "crewRescuedInMothership" to mothershipProgress.crewRescuedInMothership,
-                "mothershipCompleted" to mothershipProgress.mothershipCompleted
-            )
-        )
+        val result = mutableMapOf<String, Any>()
+        result["gamePhase"] = gamePhase.name
+        selectedPlanet?.let { result["selectedPlanet"] = it.name }
+        result["currentAct"] = currentAct
+        return result
     }
 
-    /** Load state from saved data. */
-    fun loadState(state: Map<String, Any>) {
-        gamePhase = GamePhase.valueOf(state["gamePhase"] as String)
-        selectedPlanet = state["selectedPlanet"]?.let { PlanetType.valueOf(it as String) }
-        currentAct = state["currentAct"] as Int
-        
-        // Load planet progress
-        val planetProgressMap = state["planetProgress"] as Map<*, *>
-        for ((typeName, progressData) in planetProgressMap) {
-            val type = PlanetType.valueOf(typeName as String)
-            val progressArray = progressData as List<*>
-            if (progressArray.size >= 4) {
-                planetProgress[type] = PlanetProgress(
-                    type = type,
-                    currentAct = progressArray[0] as Int,
-                    actsCompleted = progressArray[1] as Int,
-                    bossDefeated = progressArray[2] as Boolean,
-                    crewRescued = progressArray[3] as Boolean,
-                    planetCompleted = progressArray.size > 4 && progressArray[4] as Boolean
-                )
-            }
+    fun loadState(state: Map<String, Any?>) {
+        (state["gamePhase"] as? String)?.let {
+            try { gamePhase = GamePhase.valueOf(it) } catch (_: Exception) {}
         }
-        
-        // Load mothership progress
-        val mothershipMap = state["mothershipProgress"] as Map<*, *>
-        mothershipProgress.currentStage = MothershipStage.valueOf(mothershipMap["currentStage"] as String)
-        mothershipProgress.stagesCompleted = mothershipMap["stagesCompleted"] as Int
-        mothershipProgress.crewRescuedInMothership = mothershipMap["crewRescuedInMothership"] as Int
-        mothershipProgress.mothershipCompleted = mothershipMap["mothershipCompleted"] as Boolean
+        (state["selectedPlanet"] as? String)?.let {
+            try { selectedPlanet = PlanetType.valueOf(it) } catch (_: Exception) {}
+        }
+        (state["currentAct"] as? Int)?.let { currentAct = it }
     }
 }

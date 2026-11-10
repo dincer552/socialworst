@@ -153,8 +153,8 @@ class RescueSystem(private val characterManager: com.dincer552.hattrickssh.game.
     }
 
     /** Get the current crew member being rescued. */
-    val getCurrentCrewMember: com.dincer552.hattrickssh.game.character.CrewRegistry.CrewMember?
-        get() = currentRescue?.let { com.dincer552.hattrickssh.game.character.CrewRegistry.get(it) }
+    val getCurrentCrewMember: CrewMember?
+        get() = currentRescue?.let { CrewRegistry.get(it) }
 
     /** Get rescue progress - how many crew members rescued. */
     val getRescuedCount: Int

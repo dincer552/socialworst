@@ -28,6 +28,13 @@ class Player(
     private var shootCooldown: Float = 0.15f
     private var invincibleTimer: Float = 0f
     private var isOnConveyor: Boolean = false
+    var facingRight: Boolean = true
+    var currentAnimation: com.dincer552.hattrickssh.game.graphics.AnimatedSprite? = null
+    var spriteSheet: com.dincer552.hattrickssh.game.graphics.SpriteSheet? = null
+
+    val isFacingRight: Boolean get() = facingRight
+    val getCurrentFrameRect: android.graphics.Rect? get() = currentAnimation?.getCurrentFrameRect()
+    val getSpriteSheet: com.dincer552.hattrickssh.game.graphics.SpriteSheet? get() = spriteSheet
 
     override fun update(deltaTime: Float) {
         if (!isActive) return
@@ -128,7 +135,7 @@ class Player(
         shootTimer = shootCooldown
 
         val config = com.dincer552.hattrickssh.game.character.WeaponRegistry.get(
-            characterManager.getActiveWeaponType
+            characterManager.getActiveCharacterType
         )
 
         // Apply power boost speed multiplier if Willy's special is active

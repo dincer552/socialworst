@@ -238,5 +238,6 @@ object MothershipRegistry {
     fun get(stage: MothershipStage): MothershipData = stages[stage]
         ?: throw IllegalArgumentException("Unknown mothership stage: $stage")
 
-    val allStages: List<MothershipData> = stages.values.toList()
+    val allStages: List<MothershipStage> = stages.keys.toList()
+    val allStageData: List<MothershipData> = stages.values.toList()
 }

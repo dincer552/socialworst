@@ -1,5 +1,6 @@
 package com.dincer552.hattrickssh.game.boss
 
+import com.dincer552.hattrickssh.game.*
 import com.dincer552.hattrickssh.game.planet.PlanetType
 
 /** BossType - The bosses in each planet. */
@@ -23,7 +24,7 @@ enum class BossPhase {
 data class BossData(
     val type: BossType,
     val name: String,
-    val planetType: com.dincer552.hattrickssh.game.planet.PlanetType,
+    val planetType: com.dincer552.hattrickssh.game.planet.PlanetType?,
     val maxHealth: Int,
     val damagePerHit: Int,
     val numPhases: Int,
@@ -115,12 +116,10 @@ data class BossState(
 class Boss(
     val type: BossType,
     private val data: BossData
-) : com.dincer552.hattrickssh.game.GameObject(
-    com.dincer552.hattrickssh.game.character.GamePosition(200f, 100f),
-    com.dincer552.hattrickssh.game.character.GameVelocity(0f, 0f),
-    com.dincer552.hattrickssh.game.character.GameRect(
-        position.x, position.y, position.x + 48f, position.y + 48f
-    ),
+) : GameObject(
+    GamePosition(200f, 100f),
+    GameVelocity(0f, 0f),
+    GameRect(200f, 100f, 248f, 148f),
     isActive = false
 ) {
     private var state: BossState = BossState(
@@ -130,7 +129,7 @@ class Boss(
     )
 
     init {
-        collisionRect = com.dincer552.hattrickssh.game.character.GameRect(
+        collisionRect = GameRect(
             position.x, position.y, position.x + 48f, position.y + 48f
         )
     }
@@ -188,7 +187,7 @@ class Boss(
     }
 
     /** Update boss AI each frame. */
-    fun update(deltaTime: Float) {
+    override fun update(deltaTime: Float) {
         if (!isActive || state.isDefeated) return
 
         // Boss movement and attack patterns would be implemented here

@@ -230,13 +230,13 @@ class CharacterManager {
 
     /** Get the active character's max power gauge. */
     val getActiveMaxPowerGauge: Int
-        get() = characterInstances[activeCharacterType]?.data.maxPowerGauge ?: 100
+        get() = characterInstances[activeCharacterType]?.data?.maxPowerGauge ?: 100
 
     /** Get power gauge percentage (0.0 to 1.0). */
     val getPowerGaugePercent: Float
         get() {
             val char = characterInstances[activeCharacterType] ?: return 0f
-            return char.currentPowerGauge.toFloat() / char.data.maxPowerGauge
+            return char.currentPowerGauge.toFloat() / (char.data?.maxPowerGauge ?: 100)
         }
 
     /** Consume power from the active character. */
@@ -320,10 +320,10 @@ class CharacterManager {
         get() = characterInstances[activeCharacterType]?.canHighJump ?: false
 
     val getActiveMoveSpeed: Float
-        get() = characterInstances[activeCharacterType]?.data.moveSpeed ?: 2.0f
+        get() = characterInstances[activeCharacterType]?.data?.moveSpeed ?: 2.0f
 
     val getActiveJumpPower: Float
-        get() = characterInstances[activeCharacterType]?.data.jumpPower ?: -6.5f
+        get() = characterInstances[activeCharacterType]?.data?.jumpPower ?: -6.5f
 
     val getActiveWeaponProjectileCount: Int
         get() = characterInstances[activeCharacterType]?.getWeaponProjectileCount() ?: 1

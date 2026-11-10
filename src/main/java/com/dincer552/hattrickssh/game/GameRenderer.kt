@@ -1,10 +1,5 @@
 package com.dincer552.hattrickssh.game
 
-import com.dincer552.hattrickssh.game.character.CharacterManager
-import com.dincer552.hattrickssh.game.character.SpriteSheet
-import com.dincer552.hattrickssh.game.character.SpecialAbilityManager
-import com.dincer552.hattrickssh.game.character.GamePosition
-import com.dincer552.hattrickssh.game.character.GameVelocity
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -12,22 +7,13 @@ import android.graphics.Canvas
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Rect
+import com.dincer552.hattrickssh.game.character.*
+import com.dincer552.hattrickssh.game.graphics.*
 
-/** GameRenderer - Canvas-based rendering with sprite sheet support.
- * 
- * This is a plain rendering class (NOT a View subclass) used by GameView
- * to draw game objects onto a Canvas provided by SurfaceView.lockCanvas().
- * 
- * Responsibilities:
- * - Screen clearing with configured background color
- * - Viewport scaling and coordinate system setup
- * - Pixel-art-friendly rendering configuration (nearest-neighbor)
- * - Drawing sprite sheet frames, rectangles, and text
- * - Decouples rendering logic from game loop
- */
+/** GameRenderer - Canvas-based rendering with sprite sheet support. */
 class GameRenderer(private val context: Context) {
 
-    private val paint = Paint().apply { isAntiAlias = false } // Pixel art: no anti-aliasing
+    private val paint = Paint().apply { isAntiAlias = false }
     private var scaleX: Float = 1f
     private var scaleY: Float = 1f
     private var viewWidth: Int = GameConfig.VIEWPORT_WIDTH
@@ -43,7 +29,7 @@ class GameRenderer(private val context: Context) {
 
     fun setupPixelArtMode(antiAlias: Boolean = false) {
         paint.isAntiAlias = antiAlias
-        paint.isFilterBitmap = false // Nearest-neighbor scaling
+        paint.isFilterBitmap = false
     }
 
     fun updateScale(viewWidth: Int, viewHeight: Int) {
@@ -62,14 +48,14 @@ class GameRenderer(private val context: Context) {
     /** Draw a sprite sheet frame at the given position. */
     fun drawSpriteFrame(
         canvas: Canvas,
-        spriteSheet: com.dincer552.hattrickssh.game.character.SpriteSheet?,
+        spriteSheet: SpriteSheet?,
         frameRect: Rect?,
         x: Float,
         y: Float,
         faceRight: Boolean = true,
         alpha: Float = 1f
     ) {
-        val bitmap = spriteSheet?.getBitmap ?: return
+        val bitmap = spriteSheet?.bitmap ?: return
         val rect = frameRect ?: return
 
         paint.alpha = (255 * alpha).toInt()
@@ -82,23 +68,21 @@ class GameRenderer(private val context: Context) {
         if (faceRight) {
             canvas.drawBitmap(bitmap, rect, Rect(destX.toInt(), destY.toInt(), (destX + destW).toInt(), (destY + destH).toInt()), paint)
         } else {
-            // Flip horizontally
-            val matrix = Matrix()
-            matrix.setScale(-1f, 1f)
-            matrix.postTranslate(destX + destW, destY)
-            canvas.drawBitmap(bitmap, rect, matrix, paint)
+            canvas.save()
+            canvas.translate(destX + destW, destY)
+            canvas.scale(-1f, 1f)
+            canvas.drawBitmap(bitmap, rect, Rect(0, 0, destW.toInt(), destH.toInt()), paint)
+            canvas.restore()
         }
 
         paint.alpha = 255
     }
 
-    /** Draw a filled rectangle. */
     fun drawRect(canvas: Canvas, x: Float, y: Float, w: Float, h: Float, color: Int) {
         paint.color = color
         canvas.drawRect(x, y, x + w, y + h, paint)
     }
 
-    /** Draw text. */
     fun drawText(canvas: Canvas, text: String, x: Float, y: Float, color: Int = 0xFFFFFFFF.toInt(), size: Float = 16f) {
         paint.color = color
         paint.textSize = size
@@ -107,62 +91,15 @@ class GameRenderer(private val context: Context) {
         paint.isAntiAlias = false
     }
 
+    fun drawText(canvas: Canvas, text: String, x: Float, y: Float, p: Paint) {
+        canvas.drawText(text, x, y, p)
+    }
+
     val getPaint: Paint get() = paint
     val getScaleX: Float get() = scaleX
     val getScaleY: Float get() = scaleY
     val getViewWidth: Int get() = viewWidth
     val getViewHeight: Int get() = viewHeight
-}
-
-/** Physics constants for platform game physics. */
-object PhysicsConfig {
-    const val GRAVITY = 0.5f          // pixels per frame^2
-    const val MAX_FALL_SPEED = 8.0f   // pixels per frame
-    const val WALK_SPEED = 2.0f       // pixels per frame
-    const val RUN_SPEED = 3.5f        // pixels per frame
-    const val JUMP_SPEED = -6.5f      // pixels per frame (negative = up)
-    const val JUMP_PREP_FRAMES = 2    // frames of crouch before jump
-    const val GROUND_FRICTION = 0.8f  // velocity multiplier when no input
-}
-
-/** Represents a 2D position in the game world. */
-data class GamePosition(var x: Float, var y: Float)
-
-/** Represents a 2D velocity in the game world. */
-data class GameVelocity(var x: Float, var y: Float)
-
-/** Collision rectangle for an object in the game world. */
-data class GameRect(var left: Float, var top: Float, var right: Float, var bottom: Float) {
-    fun width(): Float = right - left
-    fun height(): Float = bottom - top
-    fun centerX(): Float = (left + right) / 2f
-    fun centerY(): Float = (top + bottom) / 2f
-}
-
-/** Base class for all game objects with position, velocity, and collision. */
-abstract class GameObject(
-    var position: GamePosition,
-    var velocity: GameVelocity,
-    var collisionRect: GameRect,
-    var isActive: Boolean = true
-) {
-    abstract fun update(deltaTime: Float)
-    abstract fun draw(canvas: Canvas, paint: Paint, offsetX: Float, offsetY: Float)
-
-    /** Check collision with another GameObject using AABB. */
-    fun collidesWith(other: GameObject): Boolean {
-        return collisionRect.left < other.collisionRect.right &&
-               collisionRect.right > other.collisionRect.left &&
-               collisionRect.top < other.collisionRect.bottom &&
-               collisionRect.bottom > other.collisionRect.top
-    }
-
-    fun updateCollisionRect() {
-        collisionRect.left = position.x
-        collisionRect.top = position.y
-        collisionRect.right = position.x + collisionRect.width()
-        collisionRect.bottom = position.y + collisionRect.height()
-    }
 }
 
 /** Platform - A solid object that the player can stand on. */
@@ -177,9 +114,7 @@ class Platform(
     GameVelocity(0f, 0f),
     GameRect(position.x, position.y, position.x + width, position.y + height)
 ) {
-    override fun update(deltaTime: Float) {
-        // Platforms are static by default
-    }
+    override fun update(deltaTime: Float) {}
 
     override fun draw(canvas: Canvas, paint: Paint, offsetX: Float, offsetY: Float) {
         paint.color = 0xFF4A4A4A.toInt()
@@ -190,7 +125,6 @@ class Platform(
             position.y + height - offsetY,
             paint
         )
-        // Platform top edge highlight
         paint.color = 0xFF8A8A8A.toInt()
         canvas.drawLine(
             position.x - offsetX,
@@ -220,15 +154,14 @@ class Projectile(
     isActive = true
 ) {
     private var lifeTime: Float = 0f
-    private val maxLifeTime: Float = 2.0f // seconds
+    private val maxLifeTime: Float = 2.0f
 
     override fun update(deltaTime: Float) {
-        position.x += velocity.x * deltaTime * 60f // scale to 60 FPS
+        position.x += velocity.x * deltaTime * 60f
         position.y += velocity.y * deltaTime * 60f
         lifeTime += deltaTime
         updateCollisionRect()
 
-        // Deactivate if out of lifetime
         if (lifeTime > maxLifeTime) {
             isActive = false
         }
@@ -254,10 +187,11 @@ class Projectile(
 
 /** Creates a Projectile from ProjectileData. */
 fun createProjectileFromData(data: com.dincer552.hattrickssh.game.character.ProjectileData): Projectile {
+    val speed = Math.sqrt((data.vx * data.vx + data.vy * data.vy).toDouble()).toFloat()
     val projectile = Projectile(
-        position = com.dincer552.hattrickssh.game.character.GamePosition(data.x, data.y),
+        position = GamePosition(data.x, data.y),
         direction = if (data.vx >= 0) 1 else -1,
-        speed = Math.sqrt(data.vx * data.vx + data.vy * data.vy).toFloat(),
+        speed = speed,
         damage = data.damage,
         size = data.size,
         color = data.color,
@@ -265,7 +199,7 @@ fun createProjectileFromData(data: com.dincer552.hattrickssh.game.character.Proj
         canPierce = data.canPierce,
         canBreakIce = data.canBreakIce
     )
-    projectile.velocity = com.dincer552.hattrickssh.game.character.GameVelocity(data.vx, data.vy)
+    projectile.velocity = GameVelocity(data.vx, data.vy)
     return projectile
 }
 
@@ -303,7 +237,6 @@ class Target(
             position.y + 24 - offsetY,
             paint
         )
-        // Target center
         paint.color = 0xFF000000.toInt()
         canvas.drawCircle(
             position.x - offsetX + 12f,
@@ -331,25 +264,20 @@ class GameWorld(
     fun update(deltaTime: Float) {
         player.update(deltaTime)
 
-        // Update projectiles
         projectiles.removeIf { !it.isActive }
         projectiles.forEach { it.update(deltaTime) }
 
-        // Update targets
         targets.removeIf { it.isDestroyed }
         targets.forEach { it.update(deltaTime) }
 
-        // Update platforms
         platforms.forEach { it.update(deltaTime) }
 
-        // Handle platform movement (conveyors)
         platforms.filter { it.isConveyor }.forEach { platform ->
             if (player.collidesWith(platform) && player.isOnGround) {
                 player.velocity.x += platform.conveyorSpeed * deltaTime * 60f
             }
         }
 
-        // Handle projectile-target collisions
         projectiles.forEach { projectile ->
             targets.forEach { target ->
                 if (projectile.collidesWith(target)) {
@@ -362,13 +290,9 @@ class GameWorld(
             }
         }
 
-        // Handle player-platform collisions
         handlePlatformCollisions()
-
-        // Update camera to follow player
         updateCamera()
 
-        // Remove off-screen projectiles
         projectiles.removeIf {
             it.position.x < cameraX - 50 || it.position.x > cameraX + 306 ||
             it.position.y < cameraY - 50 || it.position.y > cameraY + 274
@@ -377,13 +301,11 @@ class GameWorld(
 
     private fun handlePlatformCollisions() {
         val playerRect = player.collisionRect
-
         var landedOnPlatform = false
 
         platforms.forEach { platform ->
             if (!player.collidesWith(platform)) return@forEach
 
-            // Check if player is falling onto platform from above
             if (player.velocity.y >= 0 &&
                 playerRect.bottom - player.velocity.y * 0.16f <= platform.collisionRect.top + 2f &&
                 playerRect.right > platform.collisionRect.left + 4f &&
@@ -399,9 +321,8 @@ class GameWorld(
     }
 
     private fun updateCamera() {
-        // Center camera on player with dead zone
-        val targetX = player.position.x - 128f // Half viewport width
-        cameraX += (targetX - cameraX) * 0.1f // Smooth camera follow
+        val targetX = player.position.x - 128f
+        cameraX += (targetX - cameraX) * 0.1f
     }
 
     fun addPlatform(platform: Platform) {
@@ -412,6 +333,10 @@ class GameWorld(
         projectiles.add(projectile)
     }
 
+    fun addProjectile(data: com.dincer552.hattrickssh.game.character.ProjectileData) {
+        addProjectile(createProjectileFromData(data))
+    }
+
     fun addTarget(target: Target) {
         targets.add(target)
     }
@@ -420,7 +345,6 @@ class GameWorld(
         projectiles.remove(projectile)
     }
 
-    // Getters
     val getPlayer: Player get() = player
     val getPlatforms: List<Platform> get() = platforms
     val getProjectiles: List<Projectile> get() = projectiles
