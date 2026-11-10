@@ -1,7 +1,10 @@
 package com.dincer552.hattrickssh.game
 
 import com.dincer552.hattrickssh.game.character.CharacterManager
+import com.dincer552.hattrickssh.game.character.SpriteSheet
 import com.dincer552.hattrickssh.game.character.SpecialAbilityManager
+import com.dincer552.hattrickssh.game.character.GamePosition
+import com.dincer552.hattrickssh.game.character.GameVelocity
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -40,7 +43,7 @@ class GameRenderer(private val context: Context) {
 
     fun setupPixelArtMode(antiAlias: Boolean = false) {
         paint.isAntiAlias = antiAlias
-        paint.filterBitmap = false // Nearest-neighbor scaling
+        paint.isFilterBitmap = false // Nearest-neighbor scaling
     }
 
     fun updateScale(viewWidth: Int, viewHeight: Int) {

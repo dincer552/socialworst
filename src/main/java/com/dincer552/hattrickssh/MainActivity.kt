@@ -288,7 +288,7 @@ private fun MainScreen(
                     OutlinedButton(onClick = { editingProfile = null; showEditor = true }) { Text("+ SUNUCU") }
                     OutlinedButton(
                         onClick = {
-                            startActivity(Intent(this, GameActivity::class.java))
+                            LocalContext.current.startActivity(Intent(LocalContext.current, GameActivity::class.java))
                         },
                         modifier = Modifier.weight(1f).height(40.dp),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp)
