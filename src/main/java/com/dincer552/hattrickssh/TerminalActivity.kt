@@ -36,7 +36,7 @@ class TerminalActivity : ComponentActivity(), SshConnectionManager.SshCallback {
     private lateinit var statusView: TextView
     private lateinit var diagnosticView: TextView
     private val diagnosticLines = ArrayDeque<String>()
-    private var terminalFontSize = 14f
+    private var terminalFontSize = 20f
     private var terminalSession: TerminalSession? = null
     private var localServer: ServerSocket? = null
     private var tearingDown = false
@@ -139,7 +139,7 @@ class TerminalActivity : ComponentActivity(), SshConnectionManager.SshCallback {
             setBackgroundColor(android.graphics.Color.BLACK)
         }
         terminalFontSize = getSharedPreferences("terminal_display", MODE_PRIVATE)
-            .getFloat("font_size", 14f).coerceIn(11f, 22f)
+            .getFloat("font_size", 20f).coerceIn(14f, 30f)
 
         diagnosticView = TextView(this).apply {
             text = "SSH Client tanı günlüğü\nBağlantı başlatılıyor…"
@@ -225,7 +225,7 @@ class TerminalActivity : ComponentActivity(), SshConnectionManager.SshCallback {
     }
 
     private fun changeTerminalFontSize(delta: Float) {
-        terminalFontSize = (terminalFontSize + delta).coerceIn(11f, 22f)
+        terminalFontSize = (terminalFontSize + delta).coerceIn(14f, 30f)
         terminalView.setTextSize(terminalFontSize.toInt())
         getSharedPreferences("terminal_display", MODE_PRIVATE)
             .edit().putFloat("font_size", terminalFontSize).apply()
