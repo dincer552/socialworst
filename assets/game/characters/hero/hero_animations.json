@@ -1,0 +1,111 @@
+{
+  "frameWidth": 32,
+  "frameHeight": 32,
+  "animations": {
+    "idle": {
+      "frames": 3,
+      "fps": 8,
+      "loop": true,
+      "sheet": "hero_idle.png"
+    },
+    "walk": {
+      "frames": 4,
+      "fps": 10,
+      "loop": true,
+      "sheet": "hero_walk.png"
+    },
+    "run": {
+      "frames": 4,
+      "fps": 14,
+      "loop": true,
+      "sheet": "hero_run.png"
+    },
+    "jump_prep": {
+      "frames": 2,
+      "fps": 10,
+      "loop": false,
+      "sheet": "hero_jump.png",
+      "startFrame": 0
+    },
+    "jump_rising": {
+      "frames": 2,
+      "fps": 12,
+      "loop": false,
+      "sheet": "hero_jump.png",
+      "startFrame": 2
+    },
+    "jump_falling": {
+      "frames": 2,
+      "fps": 12,
+      "loop": false,
+      "sheet": "hero_jump.png",
+      "startFrame": 3
+    },
+    "land": {
+      "frames": 2,
+      "fps": 12,
+      "loop": false,
+      "sheet": "hero_land.png"
+    },
+    "shoot_stand": {
+      "frames": 2,
+      "fps": 12,
+      "loop": false,
+      "sheet": "hero_shoot.png"
+    },
+    "shoot_move": {
+      "frames": 2,
+      "fps": 12,
+      "loop": false,
+      "sheet": "hero_shoot_move.png"
+    },
+    "shoot_up": {
+      "frames": 2,
+      "fps": 12,
+      "loop": false,
+      "sheet": "hero_shoot_up.png"
+    },
+    "damage": {
+      "frames": 2,
+      "fps": 10,
+      "loop": false,
+      "sheet": "hero_damage.png"
+    },
+    "death": {
+      "frames": 4,
+      "fps": 8,
+      "loop": false,
+      "sheet": "hero_death.png"
+    },
+    "special": {
+      "frames": 3,
+      "fps": 10,
+      "loop": false,
+      "sheet": "hero_special.png"
+    },
+    "victory": {
+      "frames": 2,
+      "fps": 6,
+      "loop": false,
+      "sheet": "hero_victory.png"
+    }
+  },
+  "totalFrames": 36,
+  "palette": {
+    "OUTLINE": "#282828",
+    "FUR_LIGHT": "#FFE0B4",
+    "FUR_MEDIUM": "#D2AA78",
+    "FUR_DARK": "#8C6446",
+    "SUIT_LIGHT": "#508CFF",
+    "SUIT_MEDIUM": "#2864DC",
+    "SUIT_DARK": "#143C8C",
+    "GLOVE_LIGHT": "#DCDCDC",
+    "GLOVE_DARK": "#787878",
+    "BOOT_LIGHT": "#B43C3C",
+    "BOOT_DARK": "#641E1E",
+    "WEAPON": "#FFF078",
+    "WEAPON_DARK": "#C89628",
+    "EYE": "#FFFFFF",
+    "PUPIL": "#000000"
+  }
+}

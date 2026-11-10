@@ -58,6 +58,7 @@ import com.dincer552.hattrickssh.security.SshKeyImportManager
 import com.dincer552.hattrickssh.ssh.AuthenticationMethod
 import com.dincer552.hattrickssh.ssh.SshServerProfile
 import com.dincer552.hattrickssh.ssh.SshServerProfileStore
+import com.dincer552.hattrickssh.game.GameActivity
 import com.google.android.play.core.appupdate.AppUpdateManager as PlayAppUpdateManager
 import com.google.android.play.core.appupdate.AppUpdateManagerFactory
 import com.google.android.play.core.appupdate.AppUpdateOptions
@@ -283,7 +284,16 @@ private fun MainScreen(
                     Text("SSH CLIENT", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     Text("Sunucularınız", color = AppMuted, fontSize = 12.sp)
                 }
-                OutlinedButton(onClick = { editingProfile = null; showEditor = true }) { Text("+ SUNUCU") }
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    OutlinedButton(onClick = { editingProfile = null; showEditor = true }) { Text("+ SUNUCU") }
+                    OutlinedButton(
+                        onClick = {
+                            startActivity(Intent(this, GameActivity::class.java))
+                        },
+                        modifier = Modifier.weight(1f).height(40.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp)
+                    ) { Text("OYUN", fontSize = 10.sp) }
+                }
             }
 
             LazyColumn(
