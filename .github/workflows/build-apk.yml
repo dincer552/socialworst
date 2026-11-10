@@ -79,6 +79,12 @@ jobs:
           chmod 755 src/main/jniLibs/arm64-v8a/libsshbridge.so
           file src/main/jniLibs/arm64-v8a/libsshbridge.so
 
+
+      - name: Download verified FCEUmm NES core for ARM64
+        run: |
+          chmod +x scripts/download-fceumm-core.sh
+          scripts/download-fceumm-core.sh
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
@@ -99,7 +105,7 @@ jobs:
           APK="$(find build/outputs/apk/debug -maxdepth 1 -name '*.apk' -print -quit)"
           test -n "$APK"
           mkdir -p "$RUNNER_TEMP/native-check"
-          for LIB in libcloudflared.so libsshbridge.so; do
+          for LIB in libcloudflared.so libsshbridge.so libfceumm_libretro_android.so; do
             unzip -p "$APK" "lib/arm64-v8a/$LIB" > "$RUNNER_TEMP/native-check/$LIB"
             test -s "$RUNNER_TEMP/native-check/$LIB"
             file "$RUNNER_TEMP/native-check/$LIB"

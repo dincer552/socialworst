@@ -44,6 +44,13 @@
             android:windowSoftInputMode="adjustResize" />
 
         <activity
+            android:name=".game.EmulatorActivity"
+            android:exported="false"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
+
+        <activity
             android:name=".game.GameActivity"
             android:exported="true"
             android:screenOrientation="sensorLandscape"

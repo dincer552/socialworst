@@ -103,6 +103,9 @@ dependencies {
     // Termux VT emulator/view provides a real ANSI/VT terminal UI.
     implementation("com.termux.termux-app:terminal-view:0.118.0")
 
+    // GPL-3.0 Libretro frontend used by the embedded NES emulator.
+    implementation("com.github.Swordfish90:LibretroDroid:0.14.0")
+
     testImplementation("junit:junit:4.13.2")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

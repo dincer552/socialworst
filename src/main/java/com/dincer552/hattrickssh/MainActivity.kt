@@ -58,7 +58,7 @@ import com.dincer552.hattrickssh.security.SshKeyImportManager
 import com.dincer552.hattrickssh.ssh.AuthenticationMethod
 import com.dincer552.hattrickssh.ssh.SshServerProfile
 import com.dincer552.hattrickssh.ssh.SshServerProfileStore
-import com.dincer552.hattrickssh.game.GameActivity
+import com.dincer552.hattrickssh.game.EmulatorActivity
 import com.google.android.play.core.appupdate.AppUpdateManager as PlayAppUpdateManager
 import com.google.android.play.core.appupdate.AppUpdateManagerFactory
 import com.google.android.play.core.appupdate.AppUpdateOptions
@@ -288,10 +288,10 @@ private fun MainScreen(
                     OutlinedButton(onClick = { editingProfile = null; showEditor = true }) { Text("+ SUNUCU") }
                     OutlinedButton(
                         onClick = {
-                            context.startActivity(Intent(context, com.dincer552.hattrickssh.game.GameActivity::class.java))
+                            context.startActivity(Intent(context, EmulatorActivity::class.java))
                         },
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp)
-                    ) { Text("OYUN", fontSize = 10.sp) }
+                    ) { Text("EMULATOR", fontSize = 10.sp) }
                 }
             }
 
@@ -306,16 +306,16 @@ private fun MainScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("BUCKY O'HARE GAME", color = Color(0xFF38D98A), fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        Text("NES Platformer Mini-Game", color = Color(0xFF91A1B2), fontSize = 12.sp)
+                        Text("BUCKY O'HARE · NES", color = Color(0xFF38D98A), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text("Orijinal NES emülatörü", color = Color(0xFF91A1B2), fontSize = 12.sp)
                     }
                     Button(
                         onClick = {
-                            context.startActivity(Intent(context, com.dincer552.hattrickssh.game.GameActivity::class.java))
+                            context.startActivity(Intent(context, EmulatorActivity::class.java))
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF22C55E))
                     ) {
-                        Text("OYNA 🎮", color = Color.Black, fontWeight = FontWeight.Bold)
+                        Text("BAŞLAT 🎮", color = Color.Black, fontWeight = FontWeight.Bold)
                     }
                 }
             }
