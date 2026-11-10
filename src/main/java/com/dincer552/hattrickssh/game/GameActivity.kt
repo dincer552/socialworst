@@ -1,104 +1,60 @@
 package com.dincer552.hattrickssh.game
 
-import android.app.Activity
+import android.annotation.SuppressLint
 import android.content.pm.ActivityInfo
+import android.os.Build
 import android.os.Bundle
-import android.view.Window
+import android.view.View
+import android.view.WindowInsets
+import android.view.WindowInsetsController
 import android.view.WindowManager
+import androidx.activity.ComponentActivity
 
-/** GameActivity - Dedicated Android Activity for the Bucky O'Hare game.
- * 
- * Requirements satisfied:
- * - Landscape orientation only
- * - Does not change orientation of existing SSH screens
- * - Android back navigation to exit
- * - Adapts to different screen sizes
- * - Prevents system bars from covering game area (immersive mode)
- * - Handles Activity lifecycle correctly
- * - Pauses game loop when paused/stops
- * - Resumes safely when active again
- */
-class GameActivity : Activity() {
+class GameActivity : ComponentActivity() {
 
     private lateinit var gameView: GameView
-    private var isGameRunning: Boolean = false
 
+    @SuppressLint("SourceLockedOrientationActivity")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        // Setup: fullscreen, landscape, no title
-        requestWindowFeature(Window.FEATURE_NO_TITLE)
-        window.setFlags(
-            WindowManager.LayoutParams.FLAG_FULLSCREEN,
-            WindowManager.LayoutParams.FLAG_FULLSCREEN
-        )
-
-        // Lock to landscape only for this activity
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE)
-
-        // Immersive mode - hide system bars
-        window.decorView.systemUiVisibility = (
-            android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                or android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                or android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                or android.view.View.SYSTEM_UI_FLAG_FULLSCREEN
-                or android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-        )
-
-        // Create and set the game view
         gameView = GameView(this)
         setContentView(gameView)
 
-        // Initialize game state
-        gameView.getGameState.setState(GameState.PLAYING)
-        isGameRunning = true
+        // hideSystemUI must run after setContentView so the DecorView exists;
+        // otherwise window.insetsController triggers a NullPointerException.
+        hideSystemUI()
     }
 
-    override fun onPostCreate(savedInstanceState: Bundle?) {
-        super.onPostCreate(savedInstanceState)
-    }
-
-    override fun onStart() {
-        super.onStart()
-        gameView.getGameEngine.resume()
+    private fun hideSystemUI() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.setDecorFitsSystemWindows(false)
+            window.insetsController?.let { controller ->
+                controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+                controller.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = (
+                View.SYSTEM_UI_FLAG_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                )
+        }
     }
 
     override fun onResume() {
         super.onResume()
-        gameView.getGameEngine.resume()
-        isGameRunning = true
-    }
-
-    override fun onPause() {
-        super.onPause()
-        gameView.getGameEngine.pause()
-        isGameRunning = false
-    }
-
-    override fun onStop() {
-        super.onStop()
-        gameView.getGameEngine.stop()
+        hideSystemUI()
     }
 
     override fun onDestroy() {
+        gameView.release()
         super.onDestroy()
-        gameView.getGameEngine.stop()
-        isGameRunning = false
     }
-
-    /** Handle back button to exit game. */
-    override fun onBackPressed() {
-        if (gameView.getGameState.isIn(GameState.PLAYING)) {
-            gameView.getGameState.setState(GameState.PAUSED)
-        } else {
-            finish()
-        }
-    }
-
-    /** Get the game view for external access. */
-    fun getGameView(): GameView = gameView
-
-    /** Check if the game is currently running. */
-    fun isRunning(): Boolean = isGameRunning
 }

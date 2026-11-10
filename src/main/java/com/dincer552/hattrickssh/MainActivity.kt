@@ -295,6 +295,31 @@ private fun MainScreen(
                 }
             }
 
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("BUCKY O'HARE GAME", color = Color(0xFF38D98A), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text("NES Platformer Mini-Game", color = Color(0xFF91A1B2), fontSize = 12.sp)
+                    }
+                    Button(
+                        onClick = {
+                            context.startActivity(Intent(context, com.dincer552.hattrickssh.game.GameActivity::class.java))
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF22C55E))
+                    ) {
+                        Text("OYNA 🎮", color = Color.Black, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
             LazyColumn(
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 verticalArrangement = Arrangement.spacedBy(8.dp)

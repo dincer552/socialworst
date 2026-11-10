@@ -45,10 +45,10 @@
 
         <activity
             android:name=".game.GameActivity"
-            android:exported="false"
-            android:screenOrientation="landscape"
-            android:configChanges="orientation|screenSize|keyboardHidden"
-            android:windowSoftInputMode="adjustResize" />
+            android:exported="true"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
 
 
     </application>

@@ -9,7 +9,7 @@ A native Android SSH client with saved server profiles, an interactive terminal,
 - Multiple server profiles with direct SSH or optional Cloudflare Access.
 - Per-profile SSH private key or password authentication.
 - Profile data, passwords, private keys, and known-host keys are encrypted in app-private storage using AES-GCM and Android Keystore.
-- GitHub Release updates: the app checks for releases on launch and from the in-app control. It downloads `ssh-client.apk`; Android asks the user to approve installation and checks that the APK signature matches the installed app.
+- GitHub Release updates: the app checks for releases on launch and from the in-app control. It downloads `ssh-client.apk` / `hattrick-ssh.apk`; Android asks the user to approve installation and checks that the APK signature matches the installed app.
 - App data backup is disabled.
 
 Cloudflare and PTY native execution still require testing on a real ARM64 Android device. A successful cross-build alone does not prove those runtime paths work.
