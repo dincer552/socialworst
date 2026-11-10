@@ -33,11 +33,12 @@ object SpecialAbilityRegistry {
             cooldownSeconds = 0.5f,
             description = "Wall climbing"
         ),
-        SpecialAbilityType.GUIDED_ORB to SpecialAbilityType.GUIDED_ORB,
-        powerCost = 40,
-        durationSeconds = 3.0f,
-        cooldownSeconds = 1.0f,
-        description = "Controllable guided energy orb"
+        SpecialAbilityType.GUIDED_ORB to SpecialAbilityConfig(
+            type = SpecialAbilityType.GUIDED_ORB,
+            powerCost = 40,
+            durationSeconds = 3.0f,
+            cooldownSeconds = 1.0f,
+            description = "Controllable guided energy orb"
         ),
         SpecialAbilityType.POWER_BOOST to SpecialAbilityConfig(
             type = SpecialAbilityType.POWER_BOOST,
