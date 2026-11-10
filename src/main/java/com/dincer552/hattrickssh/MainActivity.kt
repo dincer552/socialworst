@@ -58,6 +58,7 @@ import com.dincer552.hattrickssh.security.SshKeyImportManager
 import com.dincer552.hattrickssh.ssh.AuthenticationMethod
 import com.dincer552.hattrickssh.ssh.SshServerProfile
 import com.dincer552.hattrickssh.ssh.SshServerProfileStore
+import com.dincer552.hattrickssh.game.EmulatorActivity
 import com.google.android.play.core.appupdate.AppUpdateManager as PlayAppUpdateManager
 import com.google.android.play.core.appupdate.AppUpdateManagerFactory
 import com.google.android.play.core.appupdate.AppUpdateOptions
@@ -284,6 +285,27 @@ private fun MainScreen(
                     Text("Sunucularınız", color = AppMuted, fontSize = 12.sp)
                 }
                 OutlinedButton(onClick = { editingProfile = null; showEditor = true }) { Text("+ SUNUCU") }
+            }
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("BUCKY O'HARE · NES", color = Color(0xFF38D98A), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text("Orijinal NES emülatörü", color = Color(0xFF91A1B2), fontSize = 12.sp)
+                    }
+                    Button(
+                        onClick = { context.startActivity(Intent(context, EmulatorActivity::class.java)) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF22C55E))
+                    ) { Text("BAŞLAT 🎮", color = Color.Black, fontWeight = FontWeight.Bold) }
+                }
             }
 
             LazyColumn(

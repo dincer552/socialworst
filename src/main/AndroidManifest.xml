@@ -44,5 +44,6 @@
             android:windowSoftInputMode="adjustResize" />
 
 
+    <activity android:name=".game.EmulatorActivity" android:exported="false" android:screenOrientation="sensorLandscape" android:configChanges="orientation|screenSize|keyboardHidden" />
     </application>
 </manifest>
