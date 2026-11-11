@@ -5,10 +5,13 @@ import android.net.Uri
 import com.dincer552.hattrickssh.Constants
 import com.dincer552.hattrickssh.cloudflare.CloudflareTunnelManager
 import com.dincer552.hattrickssh.security.SecureKeyStorage
+import com.jcraft.jsch.ChannelExec
 import com.jcraft.jsch.ChannelShell
 import com.jcraft.jsch.JSch
 import com.jcraft.jsch.UserInfo
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.net.Socket
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
@@ -209,6 +212,78 @@ class SshConnectionManager(context: Context) {
             if (count > 0) {
                 output.write(buffer, 0, count)
                 output.flush()
+            }
+        }
+    }
+
+    /**
+     * Runs a non-interactive command over the already authenticated SSH session.
+     * The existing PTY remains open; each command uses its own short-lived exec channel.
+     */
+    fun executeCommand(
+        command: String,
+        timeoutMs: Int = 20_000,
+        callback: (Result<String>) -> Unit
+    ) {
+        require(command.isNotBlank()) { "SSH komutu boş olamaz." }
+        require(command.length <= 16_384) { "SSH komutu çok uzun." }
+        executor.execute {
+            var channel: ChannelExec? = null
+            try {
+                val activeSession = session
+                check(connected.get() && activeSession != null && activeSession.isConnected) {
+                    "SSH bağlantısı etkin değil."
+                }
+                channel = activeSession.openChannel("exec") as ChannelExec
+                channel.setCommand(command)
+                val errorOutput = ByteArrayOutputStream()
+                channel.setErrStream(errorOutput)
+                val input = channel.inputStream
+                channel.connect(Constants.CONNECT_TIMEOUT_MS)
+
+                val output = ByteArrayOutputStream()
+                val buffer = ByteArray(4096)
+                val deadline = System.currentTimeMillis() + timeoutMs
+                while (true) {
+                    while (input.available() > 0) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        if (count > 0) {
+                            if (output.size() + count > 65_536) {
+                                throw IOException("SSH komut çıktısı izin verilen sınırı aştı.")
+                            }
+                            output.write(buffer, 0, count)
+                        }
+                    }
+                    if (channel.isClosed) {
+                        while (input.available() > 0) {
+                            val count = input.read(buffer)
+                            if (count <= 0) break
+                            if (output.size() + count > 65_536) {
+                                throw IOException("SSH komut çıktısı izin verilen sınırı aştı.")
+                            }
+                            output.write(buffer, 0, count)
+                        }
+                        break
+                    }
+                    if (System.currentTimeMillis() >= deadline) {
+                        throw IOException("SSH komutu zaman aşımına uğradı.")
+                    }
+                    Thread.sleep(40)
+                }
+
+                val stdout = output.toString(Charsets.UTF_8.name())
+                val stderr = errorOutput.toString(Charsets.UTF_8.name()).take(1000)
+                val exitCode = channel.exitStatus
+                check(exitCode == 0) {
+                    "Uzak komut başarısız (kod $exitCode)" +
+                        if (stderr.isBlank()) "" else ": ${safeMessage(IOException(stderr))}"
+                }
+                callback(Result.success(stdout))
+            } catch (error: Exception) {
+                callback(Result.failure(IOException(safeMessage(error), error)))
+            } finally {
+                try { channel?.disconnect() } catch (_: Exception) {}
             }
         }
     }
