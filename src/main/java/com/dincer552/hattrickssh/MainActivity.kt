@@ -308,6 +308,23 @@ private fun MainScreen(
                 }
             }
 
+            OutlinedButton(
+                onClick = {
+                    val profile = profiles.firstOrNull()
+                    if (profile == null) {
+                        Toast.makeText(context, "Önce bir SSH sunucusu eklemelisin.", Toast.LENGTH_LONG).show()
+                    } else {
+                        context.startActivity(
+                            Intent(context, VmStatusActivity::class.java)
+                                .putExtra(VmStatusActivity.EXTRA_PROFILE_ID, profile.id)
+                        )
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("VM DURUMU  •  CPU / RAM / DİSK", color = AppGreen)
+            }
+
             LazyColumn(
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
