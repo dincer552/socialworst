@@ -40,13 +40,10 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import com.dincer552.hattrickssh.security.SshKeyImportManager
 import com.dincer552.hattrickssh.ssh.AuthenticationMethod
-import com.dincer552.hattrickssh.ssh.SshCallback
 import com.dincer552.hattrickssh.ssh.SshConnectionManager
 import com.dincer552.hattrickssh.ssh.SshServerProfile
 import com.dincer552.hattrickssh.ssh.SshServerProfileStore
-import com.jcraft.jsch.JSchException
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.util.Locale
 
@@ -72,7 +69,7 @@ private data class VmMetrics(
     val txPerSecond: Double
 )
 
-class VmStatusActivity : ComponentActivity(), SshCallback {
+class VmStatusActivity : ComponentActivity(), SshConnectionManager.SshCallback {
 
     private lateinit var profile: SshServerProfile
     private lateinit var sshManager: SshConnectionManager
@@ -230,7 +227,7 @@ class VmStatusActivity : ComponentActivity(), SshCallback {
         runOnUiThread {
             val changed = message.contains("REMOTE HOST IDENTIFICATION HAS CHANGED", ignoreCase = true) ||
                 message.contains("host key has been changed", ignoreCase = true)
-            androidx.appcompat.app.AlertDialog.Builder(this)
+            android.app.AlertDialog.Builder(this)
                 .setTitle(if (changed) "SSH sunucu anahtarı değişti" else "İlk SSH sunucu doğrulaması")
                 .setMessage(
                     "$message\n\n" + if (changed) {
