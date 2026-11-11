@@ -234,12 +234,13 @@ class SshConnectionManager(context: Context) {
                 check(connected.get() && activeSession != null && activeSession.isConnected) {
                     "SSH bağlantısı etkin değil."
                 }
-                channel = activeSession.openChannel("exec") as ChannelExec
-                channel.setCommand(command)
+                val execChannel = activeSession.openChannel("exec") as ChannelExec
+                channel = execChannel
+                execChannel.setCommand(command)
                 val errorOutput = ByteArrayOutputStream()
-                channel.setErrStream(errorOutput)
-                val input = channel.inputStream
-                channel.connect(Constants.CONNECT_TIMEOUT_MS)
+                execChannel.setErrStream(errorOutput)
+                val input = execChannel.inputStream
+                execChannel.connect(Constants.CONNECT_TIMEOUT_MS)
 
                 val output = ByteArrayOutputStream()
                 val buffer = ByteArray(4096)
@@ -255,7 +256,7 @@ class SshConnectionManager(context: Context) {
                             output.write(buffer, 0, count)
                         }
                     }
-                    if (channel.isClosed) {
+                    if (execChannel.isClosed) {
                         while (input.available() > 0) {
                             val count = input.read(buffer)
                             if (count <= 0) break
@@ -274,7 +275,7 @@ class SshConnectionManager(context: Context) {
 
                 val stdout = output.toString(Charsets.UTF_8.name())
                 val stderr = errorOutput.toString(Charsets.UTF_8.name()).take(1000)
-                val exitCode = channel.exitStatus
+                val exitCode = execChannel.exitStatus
                 check(exitCode == 0) {
                     "Uzak komut başarısız (kod $exitCode)" +
                         if (stderr.isBlank()) "" else ": ${safeMessage(IOException(stderr))}"
