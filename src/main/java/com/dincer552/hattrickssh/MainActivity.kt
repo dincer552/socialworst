@@ -289,22 +289,22 @@ private fun MainScreen(
 
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(14.dp),
                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
             ) {
-                Row(
-                    Modifier.fillMaxWidth().padding(14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Button(
+                    onClick = { context.startActivity(Intent(context, EmulatorActivity::class.java)) },
+                    modifier = Modifier.fillMaxWidth().padding(10.dp).height(58.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF22C55E)),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp)
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("BUCKY O'HARE · NES", color = Color(0xFF38D98A), fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        Text("Orijinal NES emülatörü", color = Color(0xFF91A1B2), fontSize = 12.sp)
-                    }
-                    Button(
-                        onClick = { context.startActivity(Intent(context, EmulatorActivity::class.java)) },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF22C55E))
-                    ) { Text("NES EMÜLATÖRÜNÜ BAŞLAT 🎮", color = Color.Black, fontWeight = FontWeight.Bold) }
+                    Text(
+                        "NES EMÜLATÖRÜNÜ BAŞLAT  🎮",
+                        color = Color.Black,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
 
