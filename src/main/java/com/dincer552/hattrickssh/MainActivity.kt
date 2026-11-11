@@ -304,7 +304,7 @@ private fun MainScreen(
                     Button(
                         onClick = { context.startActivity(Intent(context, EmulatorActivity::class.java)) },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF22C55E))
-                    ) { Text("BAŞLAT 🎮", color = Color.Black, fontWeight = FontWeight.Bold) }
+                    ) { Text("NES EMÜLATÖRÜNÜ BAŞLAT 🎮", color = Color.Black, fontWeight = FontWeight.Bold) }
                 }
             }
 
