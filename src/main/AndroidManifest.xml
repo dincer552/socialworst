@@ -4,8 +4,9 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-    
+
     <queries>
+        <package android:name="com.dincer552.instaviewer" />
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
@@ -23,9 +24,9 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.SshClient"
         android:usesCleartextTraffic="false">
-        
+
         <activity
-            android:name=".MainActivity"
+            android:name=".StoreActivity"
             android:exported="true"
             android:launchMode="singleTop"
             android:configChanges="orientation|screenSize|keyboardHidden"
@@ -35,17 +36,19 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        
-                <activity android:name=".VmStatusActivity" android:exported="false" />
 
+        <activity android:name=".MainActivity" android:exported="false" />
+        <activity android:name=".VmStatusActivity" android:exported="false" />
         <activity
             android:name=".TerminalActivity"
             android:exported="false"
             android:launchMode="singleTop"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:windowSoftInputMode="adjustResize" />
-
-
-    <activity android:name=".game.EmulatorActivity" android:exported="false" android:screenOrientation="sensorLandscape" android:configChanges="orientation|screenSize|keyboardHidden" />
+        <activity
+            android:name=".game.EmulatorActivity"
+            android:exported="false"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
     </application>
 </manifest>
