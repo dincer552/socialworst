@@ -2,11 +2,20 @@
   {
     "id": "my-app-store",
     "name": "My App Store",
-    "description": "Kişisel uygulama mağazası ve güncelleyici",
+    "description": "Kişisel uygulama mağazası ve otomatik güncelleyici",
     "icon": "🛍️",
     "packageName": "com.dincer552.hattrickssh",
     "repository": "dincer552/socialworst",
-    "assetName": "ssh-client.apk"
+    "assetName": "my-app-store.apk"
+  },
+  {
+    "id": "dyssh",
+    "name": "DYSSH",
+    "description": "Güvenli SSH istemcisi ve terminal",
+    "icon": "🔐",
+    "packageName": "com.dincer552.dyssh",
+    "repository": "dincer552/dyssh",
+    "assetName": "dyssh.apk"
   },
   {
     "id": "instaviewer",
