@@ -293,14 +293,14 @@ private fun StoreAppCard(
     }
 }
 
+@Suppress("DEPRECATION")
 private fun getInstalledVersionCode(context: Context, packageName: String): Long? = try {
     val info = if (Build.VERSION.SDK_INT >= 33) {
         context.packageManager.getPackageInfo(packageName, android.content.pm.PackageManager.PackageInfoFlags.of(0))
     } else {
-        @Suppress("DEPRECATION")
         context.packageManager.getPackageInfo(packageName, 0)
     }
-    if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else @Suppress("DEPRECATION") info.versionCode.toLong()
+    if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
 } catch (_: Exception) {
     null
 }
