@@ -1,42 +1,41 @@
-# SSH Client for Android
+# My App Store for Android
 
-A native Android SSH client with saved server profiles, an interactive terminal, and optional Cloudflare Access transport. Commands run in a real SSH shell; the app does not simulate a terminal.
+This Android app turns the existing SSH Client installation into a private app store for the developer's own Android apps.
 
-## Features
+## Compatibility and preserved installation
 
-- Application ID: `com.dincer552.hattrickssh` (preserved for existing installations).
-- Android API 26+; target API 36; ARM64 native payloads.
-- Multiple server profiles with direct SSH or optional Cloudflare Access.
-- Per-profile SSH private key or password authentication.
-- Profile data, passwords, private keys, and known-host keys are encrypted in app-private storage using AES-GCM and Android Keystore.
-- GitHub Release updates: the app checks for releases on launch and from the in-app control. It downloads `ssh-client.apk`; Android asks the user to approve installation and checks that the APK signature matches the installed app.
-- App data backup is disabled.
+- **Application ID remains:** `com.dincer552.hattrickssh`.
+- **Existing signing identity remains:** the original JKS file and `hattrickssh` alias must be used for every update.
+- **Existing app data is not cleared.** Previous SSH profiles and encrypted key data remain in app-private storage, but the launcher now opens the store.
+- Android still validates the signing certificate and asks the user to approve APK installation/update.
 
-Cloudflare and PTY native execution still require testing on a real ARM64 Android device. A successful cross-build alone does not prove those runtime paths work.
+## Store features
 
-## GitHub Releases and signing
+- Reads the app list from [app-catalog.json](./app-catalog.json).
+- Fetches each app's latest GitHub Release and selected APK asset.
+- Shows installed/current/update-available status using package name and version code.
+- Downloads APKs with Android DownloadManager.
+- Verifies the GitHub Release SHA-256 digest when available.
+- Hands the APK to Android Package Installer; signature and package compatibility are enforced by Android.
 
-On a push to `main`, GitHub Actions builds a debug APK and, when signing secrets are configured, a signed release APK. The release includes `ssh-client.apk` for the in-app updater and `hattrick-ssh.apk` for compatibility with older app versions. Before publishing, CI compares the new APK certificate with the currently published APK certificate.
+## Adding an app
 
-Configure these GitHub repository Actions secrets:
+Add an entry to `app-catalog.json` with:
+- `id`: stable unique identifier.
+- `name` and `description`.
+- `packageName`: exact Android application ID.
+- `repository`: GitHub owner/repository.
+- `assetName`: exact APK asset name attached to the latest GitHub Release.
 
-- `ANDROID_KEYSTORE_BASE64`: base64-encoded existing JKS file.
-- `ANDROID_KEYSTORE_PASSWORD`: JKS password (and the configured signing alias password).
+The target repository must publish a signed APK with a monotonically increasing Android `versionCode`. Use the same signing certificate for all releases of that app.
 
-Never replace or commit the existing JKS, change the application ID, or send signing material in chat. Android requires user approval to install APK updates from outside Google Play.
+## Build and signing
 
-## Local build
+The app keeps the original package ID and signing key so it can update the installed SSH Client in place. GitHub Actions builds ARM64 payloads, verifies tests, and publishes `ssh-client.apk` when these repository Actions secrets are configured:
 
-The active Android module is the repository-root Gradle project and `src/main`.
+- `ANDROID_KEYSTORE_BASE64`: base64-encoded original JKS file.
+- `ANDROID_KEYSTORE_PASSWORD`: JKS password.
 
-```sh
-scripts/build-cloudflared-android.sh
-mkdir -p src/main/jniLibs/arm64-v8a
-NDK="$ANDROID_HOME/ndk/26.1.10909125"
-CC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android26-clang"
-"$CC" -O2 -Wall -Wextra -fPIE -pie -Wl,-z,max-page-size=16384 \
-  src/main/cpp/sshbridge.c -o src/main/jniLibs/arm64-v8a/libsshbridge.so
-gradle assembleDebug
-```
+Do not replace the existing JKS, change the package ID, or expose signing material. The GitHub Release asset remains named `ssh-client.apk` for compatibility with the existing updater and installed versions.
 
-See [PRIVACY_POLICY.md](./PRIVACY_POLICY.md) and [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md). No real server, Cloudflare, or Android-device test is claimed until it has actually been run.
+Android requires user approval for sideloaded APK installations. Silent installation is not supported for an ordinary app without device-owner/system privileges.
