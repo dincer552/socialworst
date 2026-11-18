@@ -245,7 +245,7 @@ private fun StoreAppCard(
     busy: Boolean,
     onInstall: () -> Unit
 ) {
-    val installedCode = remember(app.packageName) { getInstalledVersionCode(context, app.packageName) }
+    val installedCode = getInstalledVersionCode(context, app.packageName)
     val release = app.release
     val status = when {
         release == null -> "Henüz GitHub Release yayınlanmamış"
