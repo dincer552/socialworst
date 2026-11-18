@@ -63,7 +63,7 @@ object StoreCatalogManager {
         val url = asset.optString("browser_download_url")
         if (!url.startsWith("https://")) return null
         val digest = asset.optString("digest").removePrefix("sha256:").takeIf { it.length == 64 }
-        StoreRelease(versionCode, tag.removePrefix("v"), url, digest)
+        return StoreRelease(versionCode, tag.removePrefix("v"), url, digest)
     }
 
     private fun getText(url: String): String =
