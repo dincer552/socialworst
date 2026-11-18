@@ -73,8 +73,9 @@ jobs:
       - name: Verify APK package, version and signing
         if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: |
-          APK="build/outputs/apk/release/app-release.apk"
-          test -s "$APK"
+          APK="$(find build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -n "$APK" && test -s "$APK"
+          echo "RELEASE_APK=$APK" >> "$GITHUB_ENV"
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep -F "package: name='com.dincer552.hattrickssh' versionCode='$APP_VERSION_CODE'"
 
@@ -96,16 +97,16 @@ jobs:
       - name: Prepare Store APK and legacy updater alias
         if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: |
-          cp build/outputs/apk/release/app-release.apk build/outputs/apk/release/my-app-store.apk
+          cp "$RELEASE_APK" build/outputs/apk/release/my-app-store.apk
           # The currently installed SSH Client updater expects ssh-client.apk.
           # Keep this alias for the one-time in-place migration to My App Store.
-          cp build/outputs/apk/release/app-release.apk build/outputs/apk/release/ssh-client.apk
+          cp "$RELEASE_APK" build/outputs/apk/release/ssh-client.apk
 
       - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: my-app-store-debug-apk
-          path: build/outputs/apk/debug/app-debug.apk
+          path: build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
 
