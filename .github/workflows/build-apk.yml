@@ -93,9 +93,13 @@ jobs:
             exit 1
           fi
 
-      - name: Prepare Store APK
+      - name: Prepare Store APK and legacy updater alias
         if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-        run: cp build/outputs/apk/release/app-release.apk build/outputs/apk/release/my-app-store.apk
+        run: |
+          cp build/outputs/apk/release/app-release.apk build/outputs/apk/release/my-app-store.apk
+          # The currently installed SSH Client updater expects ssh-client.apk.
+          # Keep this alias for the one-time in-place migration to My App Store.
+          cp build/outputs/apk/release/app-release.apk build/outputs/apk/release/ssh-client.apk
 
       - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
@@ -116,6 +120,7 @@ jobs:
           generate_release_notes: true
           files: |
             build/outputs/apk/release/my-app-store.apk
+            build/outputs/apk/release/ssh-client.apk
           fail_on_unmatched_files: true
 
       - name: Upload signed APK artifact
