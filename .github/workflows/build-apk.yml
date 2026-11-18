@@ -35,8 +35,8 @@ jobs:
         run: |
           if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ]; then
             echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::error::The existing signing key is required to update installed My App Store builds."
-            exit 1
+            echo "::warning::Signed Store release skipped. Add the existing JKS signing secrets to preserve in-place updates."
+            exit 0
           fi
           KEYSTORE_PATH="$RUNNER_TEMP/my-app-store-signing.jks"
           printf "%s" "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
@@ -66,12 +66,12 @@ jobs:
           gradle --no-daemon -PappVersionCode="$APP_VERSION_CODE" -PappVersionName="$APP_VERSION_NAME" testDebugUnitTest assembleDebug
 
       - name: Build signed release APK
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: steps.signing.outputs.configured == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: |
           gradle --no-daemon -PappVersionCode="$APP_VERSION_CODE" -PappVersionName="$APP_VERSION_NAME" assembleRelease
 
       - name: Verify APK package, version and signing
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: steps.signing.outputs.configured == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: |
           APK="$(find build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)"
           test -n "$APK" && test -s "$APK"
@@ -80,7 +80,7 @@ jobs:
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep -F "package: name='com.dincer552.hattrickssh' versionCode='$APP_VERSION_CODE'"
 
       - name: Verify installed-app signing continuity
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: steps.signing.outputs.configured == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         shell: bash
         run: |
           OLD_APK_URL="$(curl -fsSL -H 'Accept: application/vnd.github+json' -H 'User-Agent: My-App-Store-CI' https://api.github.com/repos/dincer552/socialworst/releases/latest | jq -r '.assets[] | select(.name == "ssh-client.apk" or .name == "hattrick-ssh.apk") | .browser_download_url' | head -n 1)"
@@ -95,7 +95,7 @@ jobs:
           fi
 
       - name: Prepare Store APK and legacy updater alias
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: steps.signing.outputs.configured == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: |
           cp "$RELEASE_APK" build/outputs/apk/release/my-app-store.apk
           # The currently installed SSH Client updater expects ssh-client.apk.
@@ -111,7 +111,7 @@ jobs:
           retention-days: 14
 
       - name: Publish signed My App Store Release
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: steps.signing.outputs.configured == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.APP_VERSION_NAME }}
@@ -125,7 +125,7 @@ jobs:
           fail_on_unmatched_files: true
 
       - name: Upload signed APK artifact
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: steps.signing.outputs.configured == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         uses: actions/upload-artifact@v4
         with:
           name: my-app-store-signed-apk-${{ env.APP_VERSION_NAME }}
