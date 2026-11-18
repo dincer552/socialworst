@@ -1,0 +1,20 @@
+[
+  {
+    "id": "my-app-store",
+    "name": "My App Store",
+    "description": "Kişisel uygulama mağazası ve güncelleyici",
+    "icon": "🛍️",
+    "packageName": "com.dincer552.hattrickssh",
+    "repository": "dincer552/socialworst",
+    "assetName": "ssh-client.apk"
+  },
+  {
+    "id": "instaviewer",
+    "name": "InstaViewer",
+    "description": "Instagram bağlantılarını görüntüleyici",
+    "icon": "▶️",
+    "packageName": "com.dincer552.instaviewer",
+    "repository": "dincer552/instaviewer",
+    "assetName": "instaviewer.apk"
+  }
+]
