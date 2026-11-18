@@ -87,8 +87,12 @@ jobs:
           if [ -n "$OLD_APK_URL" ] && [ "$OLD_APK_URL" != "null" ]; then
             curl -fsSL "$OLD_APK_URL" -o "$RUNNER_TEMP/previous-store.apk"
             OLD_CERT="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$RUNNER_TEMP/previous-store.apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
-            NEW_CERT="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
-            test -n "$OLD_CERT" && test "$OLD_CERT" = "$NEW_CERT"
+            # RELEASE_APK is persisted between GitHub Actions steps via GITHUB_ENV.
+            # APK was only a local variable in the previous build step and is empty here.
+            test -n "$RELEASE_APK" && test -s "$RELEASE_APK"
+            NEW_CERT="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$RELEASE_APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+            test -n "$OLD_CERT" && test -n "$NEW_CERT"
+            test "$OLD_CERT" = "$NEW_CERT"
           else
             echo "::error::Could not locate the previous published Store APK for certificate continuity verification."
             exit 1
