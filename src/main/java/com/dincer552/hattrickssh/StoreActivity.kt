@@ -74,6 +74,7 @@ private fun StoreScreen() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var apps by remember { mutableStateOf<List<StoreAppListing>>(emptyList()) }
+    var catalogRevision by remember { mutableIntStateOf(0) }
     var loading by remember { mutableStateOf(false) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var downloadId by remember { mutableStateOf<Long?>(null) }
@@ -89,6 +90,7 @@ private fun StoreScreen() {
         scope.launch {
             try {
                 apps = StoreCatalogManager.loadCatalog()
+                catalogRevision++
                 if (apps.isEmpty()) loadError = "Katalog boş. app-catalog.json dosyasını kontrol edin."
             } catch (error: Exception) {
                 loadError = error.message ?: "Uygulama kataloğu alınamadı."
@@ -217,6 +219,7 @@ private fun StoreScreen() {
                         app = app,
                         context = context,
                         busy = downloadId != null,
+                        refreshKey = catalogRevision,
                         onInstall = {
                             installError = null
                             downloadingApp = app
@@ -243,9 +246,10 @@ private fun StoreAppCard(
     app: StoreAppListing,
     context: Context,
     busy: Boolean,
+    refreshKey: Int,
     onInstall: () -> Unit
 ) {
-    val installedCode = getInstalledVersionCode(context, app.packageName)
+    val installedCode = remember(app.packageName, refreshKey) { getInstalledVersionCode(context, app.packageName) }
     val release = app.release
     val status = when {
         release == null -> "Henüz GitHub Release yayınlanmamış"
