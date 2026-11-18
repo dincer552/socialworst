@@ -1,41 +1,33 @@
 # My App Store for Android
 
-This Android app turns the existing SSH Client installation into a private app store for the developer's own Android apps.
+My App Store is a lightweight private Android app catalog. It does not contain SSH connectivity, terminal, Cloudflare tunnel, or NES emulator functionality. Those features live in separate applications.
 
-## Compatibility and preserved installation
+## Package identity and updates
 
-- **Application ID remains:** `com.dincer552.hattrickssh`.
-- **Existing signing identity remains:** the original JKS file and `hattrickssh` alias must be used for every update.
-- **Existing app data is not cleared.** Previous SSH profiles and encrypted key data remain in app-private storage, but the launcher now opens the store.
-- Android still validates the signing certificate and asks the user to approve APK installation/update.
+- Application ID remains `com.dincer552.hattrickssh` to preserve the existing installation and update path.
+- Existing app signing identity remains the original JKS and alias `hattrickssh`.
+- The app's own GitHub Release APK is named `my-app-store.apk`.
+- Existing installation data is not cleared by the package update.
+- Version codes increase with GitHub Actions run numbers so Android accepts in-place updates.
 
-## Store features
+## Catalog
 
-- Reads the app list from [app-catalog.json](./app-catalog.json).
-- Fetches each app's latest GitHub Release and selected APK asset.
-- Shows installed/current/update-available status using package name and version code.
-- Downloads APKs with Android DownloadManager.
-- Verifies the GitHub Release SHA-256 digest when available.
-- Hands the APK to Android Package Installer; signature and package compatibility are enforced by Android.
+The store reads [app-catalog.json](./app-catalog.json). Current entries:
 
-## Adding an app
+- **My App Store** — this app, updated from this repository's Releases.
+- **DYSSH** — standalone SSH client from [dincer552/dyssh](https://github.com/dincer552/dyssh), APK asset `dyssh.apk`.
+- **InstaViewer** — separate application from [dincer552/instaviewer](https://github.com/dincer552/instaviewer), APK asset `instaviewer.apk`.
 
-Add an entry to `app-catalog.json` with:
-- `id`: stable unique identifier.
-- `name` and `description`.
-- `packageName`: exact Android application ID.
-- `repository`: GitHub owner/repository.
-- `assetName`: exact APK asset name attached to the latest GitHub Release.
+For each app, the store fetches the latest published GitHub Release, checks the package's installed version, downloads the APK, verifies its SHA-256 digest when GitHub provides one, and launches Android's package installer. Android requires user confirmation and enforces package/signature compatibility.
 
-The target repository must publish a signed APK with a monotonically increasing Android `versionCode`. Use the same signing certificate for all releases of that app.
+## Add an app
+
+Add an entry to `app-catalog.json` with a stable `id`, `name`, `description`, `icon`, exact `packageName`, GitHub `repository`, and exact release `assetName`. The app repository must publish a signed APK with monotonically increasing Android `versionCode` and a stable signing certificate.
 
 ## Build and signing
 
-The app keeps the original package ID and signing key so it can update the installed SSH Client in place. GitHub Actions builds ARM64 payloads, verifies tests, and publishes `ssh-client.apk` when these repository Actions secrets are configured:
+Configure repository Actions secrets:
+- `ANDROID_KEYSTORE_BASE64`: base64-encoded original JKS.
+- `ANDROID_KEYSTORE_PASSWORD`: JKS password for alias `hattrickssh`.
 
-- `ANDROID_KEYSTORE_BASE64`: base64-encoded original JKS file.
-- `ANDROID_KEYSTORE_PASSWORD`: JKS password.
-
-Do not replace the existing JKS, change the package ID, or expose signing material. The GitHub Release asset remains named `ssh-client.apk` for compatibility with the existing updater and installed versions.
-
-Android requires user approval for sideloaded APK installations. Silent installation is not supported for an ordinary app without device-owner/system privileges.
+Do not replace the original JKS, change the Store package ID, or reset its version code. This is required for existing Store installations to accept updates.
