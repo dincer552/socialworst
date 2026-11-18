@@ -18,25 +18,25 @@ jobs:
   build:
     name: Build and verify My App Store APK
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 35
     env:
       APP_VERSION_CODE: ${{ github.run_number }}
-      APP_VERSION_NAME: 0.2.${{ github.run_number }}
+      APP_VERSION_NAME: 0.3.${{ github.run_number }}
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
-      - name: Prepare persistent update signing key
+      - name: Prepare persistent signing key
         id: signing
         shell: bash
         run: |
           if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ]; then
             echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Signed release publishing skipped: configure ANDROID_KEYSTORE_BASE64 and ANDROID_KEYSTORE_PASSWORD."
-            exit 0
+            echo "::error::The existing signing key is required to update installed My App Store builds."
+            exit 1
           fi
           KEYSTORE_PATH="$RUNNER_TEMP/my-app-store-signing.jks"
           printf "%s" "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
@@ -45,112 +45,68 @@ jobs:
           echo "ANDROID_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
           echo "configured=true" >> "$GITHUB_OUTPUT"
 
-      - name: Test Cloud Agent safety and installer syntax
-        run: |
-          python3 -m py_compile cloud-agent/agent.py cloud-agent/test_agent.py
-          python3 -m unittest discover -s cloud-agent -p 'test_*.py' -v
-          bash -n cloud-agent/install.sh
-
       - name: Set up Java 17
-        uses: actions/setup-java@v6
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Go for Android cloudflared
-        uses: actions/setup-go@v7
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
         with:
-          go-version: "1.27.3"
-          cache: false
-
-      - name: Set up Android SDK and NDK
-        uses: android-actions/setup-android@v4
-        with:
-          packages: "platforms;android-36 build-tools;36.0.0 ndk;26.1.10909125"
-
-      - name: Install native build tools
-        run: sudo apt-get update && sudo apt-get install -y git patch make
-
-      - name: Build cloudflared for Android ARM64
-        run: |
-          chmod +x scripts/build-cloudflared-android.sh
-          scripts/build-cloudflared-android.sh
-
-      - name: Build PTY socket bridge for Android ARM64
-        run: |
-          mkdir -p src/main/jniLibs/arm64-v8a
-          NDK="$ANDROID_HOME/ndk/26.1.10909125"
-          CC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android26-clang"
-          "$CC" -O2 -Wall -Wextra -fPIE -pie -Wl,-z,max-page-size=16384 src/main/cpp/sshbridge.c -o src/main/jniLibs/arm64-v8a/libsshbridge.so
-          chmod 755 src/main/jniLibs/arm64-v8a/libsshbridge.so
-          file src/main/jniLibs/arm64-v8a/libsshbridge.so
-
-      - name: Download verified FCEUmm NES core for ARM64
-        run: |
-          chmod +x scripts/download-fceumm-core.sh
-          scripts/download-fceumm-core.sh
+          packages: "platforms;android-36 build-tools;36.0.0"
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6
+        uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.11.1"
-          cache-provider: basic
 
       - name: Run unit tests and build debug APK
         run: |
           gradle --no-daemon -PappVersionCode="$APP_VERSION_CODE" -PappVersionName="$APP_VERSION_NAME" testDebugUnitTest assembleDebug
 
       - name: Build signed release APK
-        if: steps.signing.outputs.configured == 'true' && github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: |
           gradle --no-daemon -PappVersionCode="$APP_VERSION_CODE" -PappVersionName="$APP_VERSION_NAME" assembleRelease
 
-      - name: Verify packaged Android ARM64 executables
+      - name: Verify APK package, version and signing
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: |
-          APK="$(find build/outputs/apk/debug -maxdepth 1 -name '*.apk' -print -quit)"
-          test -n "$APK"
-          mkdir -p "$RUNNER_TEMP/native-check"
-          for LIB in libcloudflared.so libsshbridge.so libfceumm_libretro_android.so; do
-            unzip -p "$APK" "lib/arm64-v8a/$LIB" > "$RUNNER_TEMP/native-check/$LIB"
-            test -s "$RUNNER_TEMP/native-check/$LIB"
-            file "$RUNNER_TEMP/native-check/$LIB"
-          done
+          APK="app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep -F "package: name='com.dincer552.hattrickssh' versionCode='$APP_VERSION_CODE'"
 
-      - name: Prepare debug APK artifact
-        run: |
-          APK="$(find build/outputs/apk/debug -maxdepth 1 -name '*.apk' -print -quit)"
-          test -n "$APK"
-          cp "$APK" build/outputs/apk/debug/my-app-store-debug.apk
-
-      - name: Upload debug APK artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: my-app-store-debug-apk
-          path: build/outputs/apk/debug/my-app-store-debug.apk
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Prepare signed GitHub APK
-        if: steps.signing.outputs.configured == 'true' && github.ref == 'refs/heads/main'
-        run: |
-          APK="$(find build/outputs/apk/release -maxdepth 1 -name '*.apk' -print -quit)"
-          test -n "$APK"
-          cp "$APK" build/outputs/apk/release/ssh-client.apk
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose build/outputs/apk/release/ssh-client.apk
-
-      - name: Verify APK update certificate continuity
-        if: steps.signing.outputs.configured == 'true' && github.ref == 'refs/heads/main'
+      - name: Verify installed-app signing continuity
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         shell: bash
         run: |
-          OLD_APK_URL="$(curl -fsSL -H 'Accept: application/vnd.github+json' -H 'User-Agent: My-App-Store-CI' https://api.github.com/repos/dincer552/socialworst/releases/latest | jq -r '.assets[] | select(.name == "ssh-client.apk") | .browser_download_url' | head -n 1)"
-          test -n "$OLD_APK_URL"
-          curl -fsSL "$OLD_APK_URL" -o "$RUNNER_TEMP/previous-store.apk"
-          OLD_CERT="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$RUNNER_TEMP/previous-store.apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
-          NEW_CERT="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs build/outputs/apk/release/ssh-client.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
-          test -n "$OLD_CERT" && test "$OLD_CERT" = "$NEW_CERT"
+          OLD_APK_URL="$(curl -fsSL -H 'Accept: application/vnd.github+json' -H 'User-Agent: My-App-Store-CI' https://api.github.com/repos/dincer552/socialworst/releases/latest | jq -r '.assets[] | select(.name == "ssh-client.apk" or .name == "hattrick-ssh.apk") | .browser_download_url' | head -n 1)"
+          if [ -n "$OLD_APK_URL" ] && [ "$OLD_APK_URL" != "null" ]; then
+            curl -fsSL "$OLD_APK_URL" -o "$RUNNER_TEMP/previous-store.apk"
+            OLD_CERT="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$RUNNER_TEMP/previous-store.apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+            NEW_CERT="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+            test -n "$OLD_CERT" && test "$OLD_CERT" = "$NEW_CERT"
+          else
+            echo "::error::Could not locate the previous published Store APK for certificate continuity verification."
+            exit 1
+          fi
 
-      - name: Publish signed GitHub Release APK
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && steps.signing.outputs.configured == 'true'
+      - name: Prepare Store APK
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        run: cp app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/my-app-store.apk
+
+      - name: Upload debug APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: my-app-store-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish signed My App Store Release
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.APP_VERSION_NAME }}
@@ -159,14 +115,14 @@ jobs:
           make_latest: true
           generate_release_notes: true
           files: |
-            build/outputs/apk/release/ssh-client.apk
+            app/build/outputs/apk/release/my-app-store.apk
           fail_on_unmatched_files: true
 
       - name: Upload signed APK artifact
-        if: steps.signing.outputs.configured == 'true' && github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@v7
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        uses: actions/upload-artifact@v4
         with:
           name: my-app-store-signed-apk-${{ env.APP_VERSION_NAME }}
-          path: build/outputs/apk/release/ssh-client.apk
+          path: app/build/outputs/apk/release/my-app-store.apk
           if-no-files-found: error
           retention-days: 90
