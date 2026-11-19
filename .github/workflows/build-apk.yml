@@ -12,7 +12,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: my-app-store-${ github.workflow }-${ github.ref }
+  group: my-app-store-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -21,9 +21,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
-      APP_VERSION_CODE: ${ github.run_number }
-      APP_VERSION_NAME: 0.3.${ github.run_number }
-      APK_SIGNING_SERVICE_URL: ${ vars.APK_SIGNING_SERVICE_URL }
+      APP_VERSION_CODE: ${{ github.run_number }}
+      APP_VERSION_NAME: 0.3.${{ github.run_number }}
+      APK_SIGNING_SERVICE_URL: ${{ vars.APK_SIGNING_SERVICE_URL }}
 
     steps:
       - name: Checkout
@@ -69,8 +69,8 @@ jobs:
         if: env.UNSIGNED_APK != ''
         uses: actions/upload-artifact@v4
         with:
-          name: my-app-store-unsigned-${ github.run_number }
-          path: ${ env.UNSIGNED_APK }
+          name: my-app-store-unsigned-${{ github.run_number }}
+          path: ${{ env.UNSIGNED_APK }}
           if-no-files-found: error
           retention-days: 7
 
@@ -99,7 +99,7 @@ jobs:
           set -euo pipefail
           curl --fail-with-body --silent --show-error \
             -X POST "$APK_SIGNING_SERVICE_URL/v1/sign" \
-            -H "Authorization: Bearer ${ steps.oidc.outputs.token }}" \
+            -H "Authorization: Bearer ${{ steps.oidc.outputs.token }}}" \
             -F "key_id=my-app-store" \
             -F "apk=@$UNSIGNED_APK;type=application/vnd.android.package-archive" \
             -o "$RUNNER_TEMP/my-app-store-signed.apk"
@@ -112,7 +112,7 @@ jobs:
         if: env.RELEASE_APK != ''
         shell: bash
         env:
-          GH_TOKEN: ${ github.token }
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           OLD_RELEASE_TAG="$(gh release list --repo dincer552/socialworst --limit 1 --json tagName --jq '.[0].tagName // empty')"
@@ -141,8 +141,8 @@ jobs:
         if: env.RELEASE_APK != ''
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${ env.APP_VERSION_NAME }
-          name: My App Store v${ env.APP_VERSION_NAME }
+          tag_name: v${{ env.APP_VERSION_NAME }}
+          name: My App Store v${{ env.APP_VERSION_NAME }}
           target_commitish: main
           make_latest: true
           generate_release_notes: true
@@ -155,7 +155,7 @@ jobs:
         if: env.RELEASE_APK != ''
         uses: actions/upload-artifact@v4
         with:
-          name: my-app-store-signed-apk-${ env.APP_VERSION_NAME }
+          name: my-app-store-signed-apk-${{ env.APP_VERSION_NAME }}
           path: build/outputs/apk/release/my-app-store.apk
           if-no-files-found: error
           retention-days: 90
