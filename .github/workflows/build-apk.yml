@@ -118,11 +118,28 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          OLD_RELEASE_TAG="$(gh release list --repo dincer552/socialworst --limit 1 --json tagName --jq '.[0].tagName // empty')"
-          if [ -n "$OLD_RELEASE_TAG" ]; then
-            gh release download "$OLD_RELEASE_TAG" --repo dincer552/socialworst --pattern "ssh-client.apk" --dir "$RUNNER_TEMP"
-            OLD_APK="$RUNNER_TEMP/ssh-client.apk"
-            test -s "$OLD_APK"
+          mapfile -t RELEASE_TAGS < <(gh release list --repo dincer552/socialworst --limit 50 --json tagName --jq '.[].tagName')
+          OLD_APK=""
+          OLD_RELEASE_TAG=""
+          OLD_DIR="$RUNNER_TEMP/old-signing-check"
+          mkdir -p "$OLD_DIR"
+
+          # Prefer the current Store asset, but tolerate historic asset names.
+          for asset in my-app-store.apk ssh-client.apk hattrick-ssh.apk; do
+            for tag in "${RELEASE_TAGS[@]}"; do
+              rm -f "$OLD_DIR/$asset"
+              if gh release download "$tag" --repo dincer552/socialworst --pattern "$asset" --dir "$OLD_DIR" >/dev/null 2>&1; then
+                if [ -s "$OLD_DIR/$asset" ]; then
+                  OLD_APK="$OLD_DIR/$asset"
+                  OLD_RELEASE_TAG="$tag"
+                  break 2
+                fi
+              fi
+            done
+          done
+
+          if [ -n "$OLD_APK" ]; then
+            echo "Checking update signature against $OLD_RELEASE_TAG ($OLD_APK)"
             OLD_CERT="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$OLD_APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
             NEW_CERT="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$RELEASE_APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
             test -n "$OLD_CERT" && test -n "$NEW_CERT"
@@ -130,6 +147,9 @@ jobs:
               echo "::error::Signing certificate mismatch. Refusing to publish an in-place update."
               exit 1
             fi
+          elif [ "${#RELEASE_TAGS[@]}" -gt 0 ]; then
+            echo "::error::Existing releases were found, but no historical Store APK asset could be downloaded. Refusing to publish without a signing continuity check."
+            exit 1
           else
             echo "No previous release exists; first signed release will establish the signing identity."
           fi
