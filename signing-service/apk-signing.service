@@ -1,0 +1,22 @@
+[Unit]
+Description=My App Store central Android APK signing service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=apk-signing
+Group=apk-signing
+WorkingDirectory=/opt/apk-signing/signing-service
+EnvironmentFile=/opt/apk-signing/.env
+ExecStart=/opt/apk-signing/.venv/bin/uvicorn main:APP --host 127.0.0.1 --port 8787 --workers 2
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/apk-signing
+
+[Install]
+WantedBy=multi-user.target
