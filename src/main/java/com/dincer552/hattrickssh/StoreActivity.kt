@@ -108,6 +108,19 @@ private fun StoreScreen(installAppIdFromIntent: String? = null) {
         }
     }
 
+    val installPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        val uri = installUri
+        if (uri != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            context.packageManager.canRequestPackageInstalls()
+        ) {
+            launchApkInstaller(context, uri)
+        } else if (uri != null) {
+            installError = "APK kurulum izni verilmedi."
+        }
+    }
+
     // Check for ready downloads from background worker notifications
     LaunchedEffect(Unit) {
         refreshCatalog()
@@ -125,19 +138,6 @@ private fun StoreScreen(installAppIdFromIntent: String? = null) {
                     launchApkInstaller(context, uri)
                 }
             }
-        }
-    }
-
-    val installPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) {
-        val uri = installUri
-        if (uri != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-            context.packageManager.canRequestPackageInstalls()
-        ) {
-            launchApkInstaller(context, uri)
-        } else if (uri != null) {
-            installError = "APK kurulum izni verilmedi."
         }
     }
 
