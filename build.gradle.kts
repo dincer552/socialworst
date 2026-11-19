@@ -38,10 +38,10 @@ android {
         }
         release {
             isMinifyEnabled = false
+            // Release APKs remain unsigned here; the central signer applies the
+            // persistent production certificate after the build has completed.
             if (!signingStorePath.isNullOrBlank()) {
                 signingConfig = signingConfigs.getByName("releaseKey")
-            } else {
-                signingConfig = signingConfigs.getByName("debug")
             }
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
