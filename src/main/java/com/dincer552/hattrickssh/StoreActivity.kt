@@ -90,6 +90,7 @@ private fun StoreScreen(installAppIdFromIntent: String? = null) {
     var downloadPercent by remember { mutableIntStateOf(0) }
     var installUri by remember { mutableStateOf<Uri?>(null) }
     var installError by remember { mutableStateOf<String?>(null) }
+    var showSignerSettings by remember { mutableStateOf(false) }
 
     fun refreshCatalog() {
         if (loading) return
@@ -215,6 +216,9 @@ private fun StoreScreen(installAppIdFromIntent: String? = null) {
                     Text("MY APP STORE", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold)
                     Text("Kendi Android uygulamaların", color = StoreMuted, fontSize = 12.sp)
                 }
+                OutlinedButton(onClick = { showSignerSettings = true }) {
+                    Text("İMZALAMA", fontSize = 9.sp)
+                }
                 OutlinedButton(onClick = { refreshCatalog() }, enabled = !loading) {
                     Text(if (loading) "Kontrol…" else "YENİLE")
                 }
@@ -267,6 +271,9 @@ private fun StoreScreen(installAppIdFromIntent: String? = null) {
             }
             Text("Mağaza sürümü ${BuildConfig.VERSION_NAME} • Paketler GitHub'dan alınır", color = StoreMuted, fontSize = 10.sp)
         }
+    }
+    if (showSignerSettings) {
+        SignerSetupDialog(onDismiss = { showSignerSettings = false })
     }
 }
 
