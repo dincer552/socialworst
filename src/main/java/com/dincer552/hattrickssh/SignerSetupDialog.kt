@@ -32,6 +32,7 @@ fun SignerSetupDialog(onDismiss: () -> Unit) {
     var adminToken by remember { mutableStateOf(SignerSettings.adminToken(context)) }
     var keyId by remember { mutableStateOf("my-app-store") }
     var packageName by remember { mutableStateOf("com.dincer552.hattrickssh") }
+    var repository by remember { mutableStateOf("dincer552/socialworst") }
     var keyAlias by remember { mutableStateOf("hattrickssh") }
     var keyPassword by remember { mutableStateOf("") }
     var keystoreUri by remember { mutableStateOf<android.net.Uri?>(null) }
@@ -66,6 +67,8 @@ fun SignerSetupDialog(onDismiss: () -> Unit) {
                     label = { Text("Key ID") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                 OutlinedTextField(value = packageName, onValueChange = { packageName = it },
                     label = { Text("Android paket adı") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(value = repository, onValueChange = { repository = it },
+                    label = { Text("GitHub deposu (owner/repo)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                 OutlinedTextField(value = keyAlias, onValueChange = { keyAlias = it },
                     label = { Text("JKS alias") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                 OutlinedTextField(
@@ -93,7 +96,7 @@ fun SignerSetupDialog(onDismiss: () -> Unit) {
                         try {
                             val response = SignerKeyUploader.upload(
                                 context, serviceUrl, adminToken, keyId, packageName,
-                                keyAlias, keyPassword, uri
+                                repository, keyAlias, keyPassword, uri
                             )
                             SignerSettings.save(context, serviceUrl, adminToken)
                             status = "Anahtar sunucuya kaydedildi: $response"
