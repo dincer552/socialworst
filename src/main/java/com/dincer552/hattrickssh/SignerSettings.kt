@@ -75,6 +75,7 @@ object SignerKeyUploader {
         adminToken: String,
         keyId: String,
         packageName: String,
+        repository: String,
         keyAlias: String,
         keyPassword: String,
         keystoreUri: Uri
@@ -110,6 +111,7 @@ object SignerKeyUploader {
         try {
             connection.outputStream.use { output ->
                 writeField(output, "package_name", packageName)
+                writeField(output, "repository", repository)
                 writeField(output, "key_alias", keyAlias)
                 writeField(output, "key_password", keyPassword)
                 output.write("--$boundary\r\n".toByteArray())
