@@ -16,3 +16,9 @@ captures/
 *.key
 src/main/jniLibs/arm64-v8a/
 socialworst/
+
+# Signing service credentials and encrypted signing material
+.env
+**/.env
+signing-service/keys/
+*.enc
