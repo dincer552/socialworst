@@ -15,7 +15,7 @@ My App Store, JKS dosyasını ve parolasını bu servise bir kez gönderir. Serv
 
 ## VM kurulumu
 
-Ubuntu 24.04 üzerinde Python 3.11+, Java 17 ve Android SDK Build Tools 36.0.0 kurulu olmalıdır. `apksigner` ve `aapt` konumlarını `.env` dosyasında belirtin.
+Ubuntu 24.04 üzerinde Python 3.11+, Java 17 ve Android SDK Build Tools 36.0.0 kurulu olmalıdır. `apksigner`, `aapt` ve `zipalign` konumlarını `.env` dosyasında belirtin. Servis imzadan önce APK'yı hizalar, ardından imzayı doğrular.
 
 ```bash
 sudo mkdir -p /opt/apk-signing /var/lib/apk-signing/keys
