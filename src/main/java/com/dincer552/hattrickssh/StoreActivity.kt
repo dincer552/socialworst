@@ -45,6 +45,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.security.MessageDigest
+import androidx.work.WorkManager
 
 private val StoreBackground = Color(0xFF080D12)
 private val StorePanel = Color(0xFF121B24)
@@ -56,6 +57,10 @@ class StoreActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         window.statusBarColor = android.graphics.Color.rgb(8, 13, 18)
         window.navigationBarColor = android.graphics.Color.BLACK
+        
+        // Start periodic background update checks
+        StoreUpdateWorker.enqueuePeriodicCheck(this)
+        
         setContent {
             MaterialTheme(colorScheme = darkColorScheme(
                 primary = StoreGreen,
@@ -100,6 +105,30 @@ private fun StoreScreen() {
         }
     }
 
+    // Check for ready downloads from background worker notifications
+    LaunchedEffect(Unit) {
+        refreshCatalog()
+        scope.launch {
+            // Check if there's an app to install from notification
+            val installAppId = intent?.getStringExtra("install_app_id")
+            if (installAppId != null) {
+                val uri = StoreUpdateNotifications.installUri(context, installAppId)
+                if (uri != null) {
+                    installUri = uri
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                        !context.packageManager.canRequestPackageInstalls()
+                    ) {
+                        installPermissionLauncher.launch(
+                            Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
+                        )
+                    } else {
+                        launchApkInstaller(context, uri)
+                    }
+                }
+            }
+        }
+    }
+
     val installPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
@@ -113,7 +142,8 @@ private fun StoreScreen() {
         }
     }
 
-    LaunchedEffect(Unit) { refreshCatalog() }
+    // Also refresh when app comes to foreground
+    LaunchedEffect(apps) { }
 
     LaunchedEffect(downloadId) {
         val id = downloadId ?: return@LaunchedEffect
