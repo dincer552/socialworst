@@ -40,7 +40,8 @@ Servisi test amaçlı başlatın:
 
 ```bash
 set -a; . ./.env; set +a
-.venv/bin/uvicorn signing-service.main:APP --host 127.0.0.1 --port 8787
+cd /opt/apk-signing/signing-service
+../.venv/bin/uvicorn main:APP --host 127.0.0.1 --port 8787
 ```
 
 Başka terminalden `curl http://127.0.0.1:8787/health` çağrısı `{"ok":true,...}` döndürmelidir. Üretimde systemd servisi olarak çalıştırın ve Cloudflare Tunnel üzerinden yalnızca HTTPS hostname yayınlayın. Public firewall/NSG üzerinde 8787 portunu açmayın.
@@ -62,6 +63,6 @@ Servisteki `ALLOWED_GITHUB_REPOSITORIES` listesinde ilgili `owner/repo` bulunmal
 
 ## İstek sözleşmesi
 
-- `PUT /v1/admin/keys/{key_id}`: Bearer admin token + multipart `keystore`, `package_name`, `key_alias`, `key_password`.
+- `PUT /v1/admin/keys/{key_id}`: Bearer admin token + multipart `keystore`, `package_name`, `repository`, `key_alias`, `key_password`.
 - `POST /v1/sign`: Bearer GitHub OIDC token + multipart `key_id`, `apk`.
 - `GET /health`: servis sağlık kontrolü.
