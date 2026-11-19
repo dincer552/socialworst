@@ -99,7 +99,7 @@ jobs:
           set -euo pipefail
           curl --fail-with-body --silent --show-error \
             -X POST "$APK_SIGNING_SERVICE_URL/v1/sign" \
-            -H "Authorization: Bearer ${{ steps.oidc.outputs.token }}}" \
+            -H "Authorization: Bearer ${{ steps.oidc.outputs.token }}" \
             -F "key_id=my-app-store" \
             -F "apk=@$UNSIGNED_APK;type=application/vnd.android.package-archive" \
             -o "$RUNNER_TEMP/my-app-store-signed.apk"
