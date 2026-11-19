@@ -138,6 +138,7 @@ async def provision_key(
     key_id: str,
     keystore: UploadFile = File(...),
     package_name: str = Form(...),
+    repository: str = Form(...),
     key_alias: str = Form(...),
     key_password: str = Form(...),
     authorization: str | None = Header(default=None),
@@ -146,6 +147,8 @@ async def provision_key(
     safe_key_id(key_id)
     if not PACKAGE_RE.fullmatch(package_name):
         raise HTTPException(status_code=400, detail="invalid_package_name")
+    if repository not in ALLOWED_REPOSITORIES:
+        raise HTTPException(status_code=403, detail="repository_not_allowed")
     if not key_alias.strip() or len(key_alias) > 128 or not key_password or len(key_password) > 512:
         raise HTTPException(status_code=400, detail="invalid_key_metadata")
     raw = await keystore.read(MAX_APK_BYTES + 1)
@@ -153,6 +156,7 @@ async def provision_key(
         raise HTTPException(status_code=413, detail="keystore_size_invalid")
     payload = {
         "package_name": package_name,
+        "repository": repository,
         "key_alias": key_alias.strip(),
         "key_password": key_password,
         "keystore_b64": base64.b64encode(raw).decode("ascii"),
@@ -170,6 +174,8 @@ async def sign_apk(
     token = authorization.removeprefix("Bearer ").strip() if authorization else ""
     claims = verify_github_oidc(token)
     config = read_key(key_id)
+    if claims.get("repository") != config.get("repository"):
+        raise HTTPException(status_code=403, detail="repository_not_authorized_for_key")
     raw = await apk.read(MAX_APK_BYTES + 1)
     if not raw or len(raw) > MAX_APK_BYTES:
         raise HTTPException(status_code=413, detail="apk_size_invalid")
