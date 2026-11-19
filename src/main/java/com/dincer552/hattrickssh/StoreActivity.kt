@@ -110,7 +110,8 @@ private fun StoreScreen() {
         refreshCatalog()
         scope.launch {
             // Check if there's an app to install from notification
-            val installAppId = intent?.getStringExtra("install_app_id")
+            val activity = context as? ComponentActivity
+            val installAppId = activity?.intent?.getStringExtra("install_app_id")
             if (installAppId != null) {
                 val uri = StoreUpdateNotifications.installUri(context, installAppId)
                 if (uri != null) {
