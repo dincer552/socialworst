@@ -34,6 +34,12 @@ openssl rand -hex 32
 
 ```bash
 chmod 600 .env
+sudo useradd --system --home /opt/apk-signing --shell /usr/sbin/nologin apk-signing || true
+sudo chown root:apk-signing .env
+sudo chmod 640 .env
+sudo chown -R root:root /opt/apk-signing
+sudo chmod -R a+rX /opt/apk-signing
+sudo chown -R apk-signing:apk-signing /var/lib/apk-signing
 ```
 
 Servisi test amaçlı başlatın:
@@ -44,7 +50,16 @@ cd /opt/apk-signing/signing-service
 ../.venv/bin/uvicorn main:APP --host 127.0.0.1 --port 8787
 ```
 
-Başka terminalden `curl http://127.0.0.1:8787/health` çağrısı `{"ok":true,...}` döndürmelidir. Üretimde systemd servisi olarak çalıştırın ve Cloudflare Tunnel üzerinden yalnızca HTTPS hostname yayınlayın. Public firewall/NSG üzerinde 8787 portunu açmayın.
+Başka terminalden `curl http://127.0.0.1:8787/health` çağrısı `{"ok":true,...}` döndürmelidir. Doğrulandıktan sonra systemd servisini etkinleştirin:
+
+```bash
+sudo cp /opt/apk-signing/signing-service/apk-signing.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now apk-signing
+sudo systemctl status apk-signing
+```
+
+Cloudflare Tunnel ingress'ini `http://127.0.0.1:8787` adresine yönlendirin ve yalnızca HTTPS hostname yayınlayın. Public firewall/NSG üzerinde 8787 portunu açmayın.
 
 ## My App Store'dan anahtar ekleme
 
