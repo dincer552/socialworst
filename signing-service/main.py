@@ -30,6 +30,7 @@ OIDC_ISSUER = "https://token.actions.githubusercontent.com"
 JWKS_URL = OIDC_ISSUER + "/.well-known/jwks"
 APKSIGNER = os.environ.get("APKSIGNER_PATH", "/opt/android-sdk/build-tools/36.0.0/apksigner")
 AAPT = os.environ.get("AAPT_PATH", "/opt/android-sdk/build-tools/36.0.0/aapt")
+ZIPALIGN = os.environ.get("ZIPALIGN_PATH", "/opt/android-sdk/build-tools/36.0.0/zipalign")
 _jwks = None
 
 
@@ -184,6 +185,7 @@ async def sign_apk(
         folder = Path(temp)
         unsigned = folder / "input-unsigned.apk"
         keystore_path = folder / "signing-key.jks"
+        aligned = folder / "input-aligned.apk"
         signed = folder / "output-signed.apk"
         unsigned.write_bytes(raw)
         keystore_bytes = base64.b64decode(config["keystore_b64"], validate=True)
@@ -194,6 +196,7 @@ async def sign_apk(
         if package_name != config["package_name"]:
             raise HTTPException(status_code=403, detail="package_name_does_not_match_signing_key")
 
+        run_checked([ZIPALIGN, "-f", "-p", "4", str(unsigned), str(aligned)], timeout=60)
         env = os.environ.copy()
         env["APK_SIGNING_PASSWORD"] = config["key_password"]
         run_checked([
@@ -201,8 +204,9 @@ async def sign_apk(
             "--ks-key-alias", config["key_alias"],
             "--ks-pass", "env:APK_SIGNING_PASSWORD",
             "--key-pass", "env:APK_SIGNING_PASSWORD",
-            "--out", str(signed), str(unsigned),
+            "--out", str(signed), str(aligned),
         ], env=env, timeout=120)
+        run_checked([ZIPALIGN, "-c", "-p", "4", str(signed)], timeout=30)
         run_checked([APKSIGNER, "verify", "--verbose", str(signed)], timeout=60)
         result = signed.read_bytes()
 
