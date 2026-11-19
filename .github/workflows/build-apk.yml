@@ -9,41 +9,25 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 concurrency:
-  group: my-app-store-${{ github.workflow }}-${{ github.ref }}
+  group: my-app-store-${ github.workflow }-${ github.ref }
   cancel-in-progress: true
 
 jobs:
   build:
-    name: Build and verify My App Store APK
+    name: Build, centrally sign and publish My App Store
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 40
     env:
-      APP_VERSION_CODE: ${{ github.run_number }}
-      APP_VERSION_NAME: 0.3.${{ github.run_number }}
-      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      APP_VERSION_CODE: ${ github.run_number }
+      APP_VERSION_NAME: 0.3.${ github.run_number }
+      APK_SIGNING_SERVICE_URL: ${ vars.APK_SIGNING_SERVICE_URL }
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Prepare persistent signing key
-        id: signing
-        shell: bash
-        run: |
-          if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ]; then
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Signed Store release skipped. Add the existing JKS signing secrets to preserve in-place updates."
-            exit 0
-          fi
-          KEYSTORE_PATH="$RUNNER_TEMP/my-app-store-signing.jks"
-          printf "%s" "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
-          test -s "$KEYSTORE_PATH"
-          keytool -list -keystore "$KEYSTORE_PATH" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias hattrickssh >/dev/null
-          echo "ANDROID_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
-          echo "configured=true" >> "$GITHUB_OUTPUT"
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -65,52 +49,13 @@ jobs:
         run: |
           gradle --no-daemon -PappVersionCode="$APP_VERSION_CODE" -PappVersionName="$APP_VERSION_NAME" testDebugUnitTest assembleDebug
 
-      - name: Build signed release APK
-        if: steps.signing.outputs.configured == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      - name: Build unsigned release APK
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: |
           gradle --no-daemon -PappVersionCode="$APP_VERSION_CODE" -PappVersionName="$APP_VERSION_NAME" assembleRelease
-
-      - name: Verify APK package, version and signing
-        if: steps.signing.outputs.configured == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-        run: |
           APK="$(find build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)"
           test -n "$APK" && test -s "$APK"
-          echo "RELEASE_APK=$APK" >> "$GITHUB_ENV"
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
-          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep -F "package: name='com.dincer552.hattrickssh' versionCode='$APP_VERSION_CODE'"
-
-      - name: Verify installed-app signing continuity
-        if: steps.signing.outputs.configured == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          # Download the last published SSH Client APK through GitHub's authenticated
-          # release API. Direct browser_download_url requests can return HTTP 403.
-          OLD_RELEASE_TAG="$(gh release view --repo dincer552/socialworst --json tagName --jq .tagName)"
-          test -n "$OLD_RELEASE_TAG"
-          gh release download "$OLD_RELEASE_TAG" --repo dincer552/socialworst --pattern "ssh-client.apk" --dir "$RUNNER_TEMP"
-          OLD_APK="$RUNNER_TEMP/ssh-client.apk"
-          test -s "$OLD_APK"
-
-          test -n "$RELEASE_APK" && test -s "$RELEASE_APK"
-          OLD_CERT="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$OLD_APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
-          NEW_CERT="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$RELEASE_APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
-
-          test -n "$OLD_CERT" && test -n "$NEW_CERT"
-          echo "Previous app signing certificate: $OLD_CERT"
-          echo "New Store signing certificate:      $NEW_CERT"
-          if [ "$OLD_CERT" != "$NEW_CERT" ]; then
-            echo "::error::Signing certificate mismatch. Refusing to publish an in-place update."
-            exit 1
-          fi
-      - name: Prepare Store APK and legacy updater alias
-        if: steps.signing.outputs.configured == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-        run: |
-          cp "$RELEASE_APK" build/outputs/apk/release/my-app-store.apk
-          # The currently installed SSH Client updater expects ssh-client.apk.
-          # Keep this alias for the one-time in-place migration to My App Store.
-          cp "$RELEASE_APK" build/outputs/apk/release/ssh-client.apk
+          echo "UNSIGNED_APK=$APK" >> "$GITHUB_ENV"
 
       - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
@@ -120,12 +65,84 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Upload unsigned release for diagnostics
+        if: env.UNSIGNED_APK != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: my-app-store-unsigned-${ github.run_number }
+          path: ${ env.UNSIGNED_APK }
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Explain missing central signing endpoint
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && env.APK_SIGNING_SERVICE_URL == ''
+        run: |
+          echo "::warning::APK_SIGNING_SERVICE_URL is not configured. No production-signed APK or GitHub Release will be published."
+
+      - name: Obtain short-lived GitHub OIDC token
+        id: oidc
+        if: env.UNSIGNED_APK != '' && env.APK_SIGNING_SERVICE_URL != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESPONSE="$(curl --fail --silent --show-error \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=socialworst-apk-signer")"
+          TOKEN="$(python -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<< "$RESPONSE")"
+          test -n "$TOKEN"
+          echo "::add-mask::$TOKEN"
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Sign APK with central My App Store signer
+        if: steps.oidc.outcome == 'success'
+        run: |
+          set -euo pipefail
+          curl --fail-with-body --silent --show-error \
+            -X POST "$APK_SIGNING_SERVICE_URL/v1/sign" \
+            -H "Authorization: Bearer ${ steps.oidc.outputs.token }}" \
+            -F "key_id=my-app-store" \
+            -F "apk=@$UNSIGNED_APK;type=application/vnd.android.package-archive" \
+            -o "$RUNNER_TEMP/my-app-store-signed.apk"
+          test -s "$RUNNER_TEMP/my-app-store-signed.apk"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$RUNNER_TEMP/my-app-store-signed.apk"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$RUNNER_TEMP/my-app-store-signed.apk" | grep -F "package: name='com.dincer552.hattrickssh' versionCode='$APP_VERSION_CODE'"
+          echo "RELEASE_APK=$RUNNER_TEMP/my-app-store-signed.apk" >> "$GITHUB_ENV"
+
+      - name: Verify installed-app signing continuity
+        if: env.RELEASE_APK != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${ github.token }
+        run: |
+          set -euo pipefail
+          OLD_RELEASE_TAG="$(gh release list --repo dincer552/socialworst --limit 1 --json tagName --jq '.[0].tagName // empty')"
+          if [ -n "$OLD_RELEASE_TAG" ]; then
+            gh release download "$OLD_RELEASE_TAG" --repo dincer552/socialworst --pattern "ssh-client.apk" --dir "$RUNNER_TEMP"
+            OLD_APK="$RUNNER_TEMP/ssh-client.apk"
+            test -s "$OLD_APK"
+            OLD_CERT="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$OLD_APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+            NEW_CERT="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$RELEASE_APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+            test -n "$OLD_CERT" && test -n "$NEW_CERT"
+            if [ "$OLD_CERT" != "$NEW_CERT" ]; then
+              echo "::error::Signing certificate mismatch. Refusing to publish an in-place update."
+              exit 1
+            fi
+          else
+            echo "No previous release exists; first signed release will establish the signing identity."
+          fi
+
+      - name: Prepare Store APK and legacy updater alias
+        if: env.RELEASE_APK != ''
+        run: |
+          cp "$RELEASE_APK" build/outputs/apk/release/my-app-store.apk
+          cp "$RELEASE_APK" build/outputs/apk/release/ssh-client.apk
+
       - name: Publish signed My App Store Release
-        if: steps.signing.outputs.configured == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: env.RELEASE_APK != ''
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ env.APP_VERSION_NAME }}
-          name: My App Store v${{ env.APP_VERSION_NAME }}
+          tag_name: v${ env.APP_VERSION_NAME }
+          name: My App Store v${ env.APP_VERSION_NAME }
           target_commitish: main
           make_latest: true
           generate_release_notes: true
@@ -135,10 +152,10 @@ jobs:
           fail_on_unmatched_files: true
 
       - name: Upload signed APK artifact
-        if: steps.signing.outputs.configured == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: env.RELEASE_APK != ''
         uses: actions/upload-artifact@v4
         with:
-          name: my-app-store-signed-apk-${{ env.APP_VERSION_NAME }}
+          name: my-app-store-signed-apk-${ env.APP_VERSION_NAME }
           path: build/outputs/apk/release/my-app-store.apk
           if-no-files-found: error
           retention-days: 90
