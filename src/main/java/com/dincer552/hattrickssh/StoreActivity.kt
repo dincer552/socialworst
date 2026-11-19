@@ -61,6 +61,9 @@ class StoreActivity : ComponentActivity() {
         // Start periodic background update checks
         StoreUpdateWorker.enqueuePeriodicCheck(this)
         
+        // Get install_app_id from intent if present
+        val installAppIdFromIntent = intent?.getStringExtra("install_app_id")
+        
         setContent {
             MaterialTheme(colorScheme = darkColorScheme(
                 primary = StoreGreen,
@@ -68,14 +71,14 @@ class StoreActivity : ComponentActivity() {
                 surface = StorePanel,
                 onSurface = Color.White
             )) {
-                StoreScreen()
+                StoreScreen(installAppIdFromIntent = installAppIdFromIntent)
             }
         }
     }
 }
 
 @Composable
-private fun StoreScreen() {
+private fun StoreScreen(installAppIdFromIntent: String? = null) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var apps by remember { mutableStateOf<List<StoreAppListing>>(emptyList()) }
@@ -108,23 +111,18 @@ private fun StoreScreen() {
     // Check for ready downloads from background worker notifications
     LaunchedEffect(Unit) {
         refreshCatalog()
-        scope.launch {
-            // Check if there's an app to install from notification
-            val activity = context as? ComponentActivity
-            val installAppId = activity?.intent?.getStringExtra("install_app_id")
-            if (installAppId != null) {
-                val uri = StoreUpdateNotifications.installUri(context, installAppId)
-                if (uri != null) {
-                    installUri = uri
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-                        !context.packageManager.canRequestPackageInstalls()
-                    ) {
-                        installPermissionLauncher.launch(
-                            Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
-                        )
-                    } else {
-                        launchApkInstaller(context, uri)
-                    }
+        if (installAppIdFromIntent != null) {
+            val uri = StoreUpdateNotifications.installUri(context, installAppIdFromIntent)
+            if (uri != null) {
+                installUri = uri
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                    !context.packageManager.canRequestPackageInstalls()
+                ) {
+                    installPermissionLauncher.launch(
+                        Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
+                    )
+                } else {
+                    launchApkInstaller(context, uri)
                 }
             }
         }
