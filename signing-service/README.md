@@ -30,7 +30,7 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 openssl rand -hex 32
 ```
 
-Üretilen iki değeri `.env` içindeki `SIGNING_ENCRYPTION_KEY` ve `SIGNING_ADMIN_TOKEN` alanlarına girin. `.env` dosyasını yalnızca servis kullanıcısının okuyabildiğinden emin olun:
+Üretilen iki değeri `.env` içindeki `SIGNING_ENCRYPTION_KEY` ve `SIGNING_ADMIN_TOKEN` alanlarına girin. `SIGNING_ENCRYPTION_KEY` değerini yedekleyin; kaybolursa diskteki şifreli JKS dosyaları açılamaz. Bu değer ve admin token'ı GitHub'a veya uygulama deposuna yüklenmemelidir. `.env` dosyasını yalnızca servis kullanıcısının okuyabildiğinden emin olun:
 
 ```bash
 chmod 600 .env
