@@ -210,13 +210,31 @@ async def provision_key(
     raw = await keystore.read(MAX_APK_BYTES + 1)
     if not raw or len(raw) > MAX_APK_BYTES:
         raise HTTPException(status_code=413, detail="keystore_size_invalid")
+    encoded_keystore = base64.b64encode(raw).decode("ascii")
+    try:
+        existing = read_key(key_id)
+    except HTTPException as exc:
+        if exc.status_code != 404:
+            raise
+        existing = None
+
+    if existing:
+        # Never silently replace the certificate behind an existing Android package.
+        if existing.get("package_name") != package_name or existing.get("keystore_b64") != encoded_keystore:
+            raise HTTPException(status_code=409, detail="existing_signing_key_is_protected")
+        if existing.get("key_alias") != key_alias.strip():
+            raise HTTPException(status_code=409, detail="existing_signing_alias_is_protected")
+        repositories = key_repositories(existing) | {repository}
+    else:
+        repositories = {repository}
+
     payload = {
         "package_name": package_name,
-        "repository": repository,
-        "repositories": [repository],
+        "repository": sorted(repositories)[0],
+        "repositories": sorted(repositories),
         "key_alias": key_alias.strip(),
         "key_password": key_password,
-        "keystore_b64": base64.b64encode(raw).decode("ascii"),
+        "keystore_b64": encoded_keystore,
     }
     save_key(key_id, payload)
     save_allowed_repositories(allowed_repositories() | {repository})
