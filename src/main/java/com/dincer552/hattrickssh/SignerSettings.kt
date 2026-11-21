@@ -158,7 +158,7 @@ object SignerKeyUploader {
             connection.outputStream.use { output ->
                 fun writeField(name: String, value: String) {
                     output.write("--$boundary\r\n".toByteArray())
-                    output.write("Content-Disposition: form-data; name=\\"$name\\"\r\n\r\n".toByteArray())
+                    output.write("Content-Disposition: form-data; name=\"$name\"\r\n\r\n".toByteArray())
                     output.write(value.toByteArray(Charsets.UTF_8))
                     output.write("\r\n".toByteArray())
                 }
