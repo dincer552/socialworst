@@ -4,10 +4,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
@@ -30,23 +27,25 @@ fun SignerSetupDialog(onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
     var serviceUrl by remember { mutableStateOf(SignerSettings.baseUrl(context)) }
     var adminToken by remember { mutableStateOf(SignerSettings.adminToken(context)) }
+    var showServerSettings by remember { mutableStateOf(adminToken.isBlank()) }
     var repositoryUrl by remember { mutableStateOf("") }
     var keyId by remember { mutableStateOf("my-app-store") }
-    var packageName by remember { mutableStateOf("com.dincer552.hattrickssh") }
+    var packageName by remember { mutableStateOf("") }
     var keyAlias by remember { mutableStateOf("hattrickssh") }
     var keyPassword by remember { mutableStateOf("") }
     var keystoreUri by remember { mutableStateOf<android.net.Uri?>(null) }
-    var status by remember { mutableStateOf("GitHub repo bağlantısını gir. Kayıtlı anahtar varsa JKS seçmeden bağlanır.") }
+    var status by remember { mutableStateOf("GitHub repo linkini yapıştır. Kayıtlı anahtar varsa tek tuşla bağlanır.") }
     var busy by remember { mutableStateOf(false) }
 
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {
         keystoreUri = it
-        if (it != null) status = "JKS seçildi. Repo ve anahtar tek işlemde kaydedilecek."
+        if (it != null) status = "JKS seçildi. İlk kayıt ve repo bağlantısı tek işlemde yapılacak."
     }
 
-    fun applyKnownRepositoryDefaults(value: String) {
-        val cleaned = value.trim().trimEnd('/').removeSuffix(".git").lowercase()
-        when (cleaned) {
+    fun applyRepositoryDefaults(value: String) {
+        val cleaned = value.trim().trimEnd('/').removeSuffix(".git")
+        val lower = cleaned.lowercase()
+        when (lower) {
             "https://github.com/dincer552/socialworst", "dincer552/socialworst" -> {
                 keyId = "my-app-store"
                 packageName = "com.dincer552.hattrickssh"
@@ -62,6 +61,16 @@ fun SignerSetupDialog(onDismiss: () -> Unit) {
                 packageName = "com.dincer552.instaviewer"
                 keyAlias = "hattrickssh"
             }
+            else -> {
+                val parts = cleaned.removePrefix("https://github.com/").removePrefix("http://github.com/")
+                    .split("/").filter { it.isNotBlank() }
+                if (parts.size == 2) {
+                    keyId = parts[1].lowercase()
+                        .replace(Regex("[^a-z0-9._-]"), "-")
+                        .take(64).let { if (it.length < 2) "${it}-app" else it }
+                    packageName = ""
+                }
+            }
         }
     }
 
@@ -71,43 +80,24 @@ fun SignerSetupDialog(onDismiss: () -> Unit) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
-                    "Repo linkini yapıştır. VM'de kayıtlı anahtar varsa doğrudan bağlanır; ilk kayıt için JKS'yi bir kez seç.",
+                    "Repo linkini yapıştır. Anahtar VM'de kayıtlıysa JKS istemeden bağlanır.",
                     style = MaterialTheme.typography.bodySmall
                 )
                 OutlinedTextField(
-                    value = serviceUrl, onValueChange = { serviceUrl = it },
-                    label = { Text("İmza sunucusu HTTPS adresi") },
-                    modifier = Modifier.fillMaxWidth(), singleLine = true,
-                    textStyle = MaterialTheme.typography.bodySmall
-                )
-                OutlinedTextField(
-                    value = adminToken, onValueChange = { adminToken = it },
-                    label = { Text("Yönetici token") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    modifier = Modifier.fillMaxWidth(), singleLine = true,
-                    textStyle = MaterialTheme.typography.bodySmall
-                )
-                OutlinedTextField(
                     value = repositoryUrl,
-                    onValueChange = { repositoryUrl = it; applyKnownRepositoryDefaults(it) },
+                    onValueChange = { repositoryUrl = it; applyRepositoryDefaults(it) },
                     label = { Text("GitHub repo bağlantısı") },
                     placeholder = { Text("https://github.com/kullanici/proje") },
                     modifier = Modifier.fillMaxWidth(), singleLine = true,
                     textStyle = MaterialTheme.typography.bodySmall
                 )
-                OutlinedTextField(
-                    value = keyId, onValueChange = { keyId = it },
-                    label = { Text("Anahtar profili") },
-                    modifier = Modifier.fillMaxWidth(), singleLine = true,
-                    textStyle = MaterialTheme.typography.bodySmall
-                )
+                Text("Anahtar profili: $keyId", style = MaterialTheme.typography.bodySmall)
                 TextButton(
                     onClick = { filePicker.launch(arrayOf("*/*")) },
                     enabled = !busy,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(if (keystoreUri == null) "İLK KAYIT / FARKLI ANAHTAR İÇİN JKS SEÇ" else "JKS DOSYASI SEÇİLDİ • DEĞİŞTİR")
+                    Text(if (keystoreUri == null) "İLK KAYIT İÇİN JKS SEÇ (GEREKİRSE)" else "JKS SEÇİLDİ • DEĞİŞTİR")
                 }
                 if (keystoreUri != null) {
                     OutlinedTextField(
@@ -131,6 +121,29 @@ fun SignerSetupDialog(onDismiss: () -> Unit) {
                         textStyle = MaterialTheme.typography.bodySmall
                     )
                 }
+                TextButton(
+                    onClick = { showServerSettings = !showServerSettings },
+                    enabled = !busy,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(if (showServerSettings) "SUNUCU AYARLARINI GİZLE" else "SUNUCU AYARLARI")
+                }
+                if (showServerSettings) {
+                    OutlinedTextField(
+                        value = serviceUrl, onValueChange = { serviceUrl = it },
+                        label = { Text("İmza sunucusu") },
+                        modifier = Modifier.fillMaxWidth(), singleLine = true,
+                        textStyle = MaterialTheme.typography.bodySmall
+                    )
+                    OutlinedTextField(
+                        value = adminToken, onValueChange = { adminToken = it },
+                        label = { Text("Yönetici token (bir kez girilir)") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        modifier = Modifier.fillMaxWidth(), singleLine = true,
+                        textStyle = MaterialTheme.typography.bodySmall
+                    )
+                }
                 Text(status, style = MaterialTheme.typography.bodySmall)
             }
         },
@@ -142,7 +155,7 @@ fun SignerSetupDialog(onDismiss: () -> Unit) {
                     (keystoreUri == null || (packageName.isNotBlank() && keyAlias.isNotBlank() && keyPassword.isNotBlank())),
                 onClick = {
                     busy = true
-                    status = "Repo VM'deki imzalama servisine kaydediliyor…"
+                    status = "Repo imzalama sunucusuna bağlanıyor…"
                     scope.launch {
                         try {
                             val result = if (keystoreUri != null) {
@@ -156,10 +169,10 @@ fun SignerSetupDialog(onDismiss: () -> Unit) {
                                 )
                             }
                             SignerSettings.save(context, serviceUrl, adminToken)
-                            status = "İmzalama bağlantısı hazır: $result"
+                            status = "Repo imzalama sistemine bağlandı: $result"
                             keyPassword = ""
                         } catch (error: Exception) {
-                            status = error.message ?: "Repo bağlanamadı."
+                            status = error.message ?: "Repo bağlanamadı. İlk kayıt için JKS seç."
                         } finally {
                             busy = false
                         }
@@ -169,7 +182,7 @@ fun SignerSetupDialog(onDismiss: () -> Unit) {
                 Text(
                     when {
                         busy -> "BAĞLANIYOR…"
-                        keystoreUri != null -> "REPOYU BAĞLA VE JKS'Yİ KAYDET"
+                        keystoreUri != null -> "REPOYU BAĞLA VE ANAHTARI KAYDET"
                         else -> "REPOYU BAĞLA"
                     }
                 )
