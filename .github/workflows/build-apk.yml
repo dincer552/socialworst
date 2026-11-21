@@ -129,7 +129,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ACTUAL_CERT="$(`$ANDROID_HOME/build-tools/36.0.0/apksigner` verify --print-certs "$RELEASE_APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')"
+          ACTUAL_CERT="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$RELEASE_APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')"
           EXPECTED_CERT="41f5675e480df116d5e584a8abe7600f352dfab92d4b463b295e79f46522ef55"
           if [ "$ACTUAL_CERT" != "$EXPECTED_CERT" ]; then
             echo "::error::The signed APK certificate does not match the newly provisioned My App Store JKS."
