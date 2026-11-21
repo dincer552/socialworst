@@ -61,12 +61,13 @@ class StoreDownloadCompletedReceiver : BroadcastReceiver() {
         } ?: return
         val expectedPackage = metadata.optString("packageName")
         val expectedVersion = metadata.optLong("versionCode")
-        val actual = try {
-            val info = if (Build.VERSION.SDK_INT >= 33) context.packageManager.getPackageArchiveInfo(uri.path ?: "", android.content.pm.PackageManager.PackageInfoFlags.of(0))
-            else @Suppress("DEPRECATION") context.packageManager.getPackageArchiveInfo(uri.path ?: "", 0)
-            info
-        } catch (_: Exception) { null }
-        // DownloadManager content URIs are verified by digest below; PackageInstaller performs the final package/signature validation.
+        val identityError = validateApkIdentity(context, uri, expectedPackage, expectedVersion)
+        if (identityError != null) {
+            pending.remove(matchedKey)
+            prefs.edit().putString(StoreUpdateNotifications.PENDING, pending.toString()).apply()
+            return
+        }
+        // The archive identity and optional SHA-256 are checked before publishing it as installable.
         val expectedSha = metadata.optString("sha256")
         if (expectedSha.isNotBlank()) {
             val digest = MessageDigest.getInstance("SHA-256")
