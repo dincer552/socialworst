@@ -1,8 +1,10 @@
 package com.dincer552.hattrickssh
 
 import android.app.DownloadManager
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -56,6 +58,13 @@ class StoreActivity : ComponentActivity() {
     private val installRequestState = mutableStateOf<Pair<String, Int>?>(null)
     private val resumeRevision = mutableIntStateOf(0)
     private var installRequestSequence = 0
+    private val packageInstallResultReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == StorePackageInstallReceiver.ACTION_INSTALL_FINISHED) {
+                resumeRevision.intValue += 1
+            }
+        }
+    }
 
     private fun captureInstallRequest(source: Intent?) {
         val appId = source?.getStringExtra("install_app_id")
@@ -93,6 +102,22 @@ class StoreActivity : ComponentActivity() {
         captureInstallRequest(intent)
     }
 
+    override fun onStart() {
+        super.onStart()
+        val filter = IntentFilter(StorePackageInstallReceiver.ACTION_INSTALL_FINISHED)
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(packageInstallResultReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(packageInstallResultReceiver, filter)
+        }
+    }
+
+    override fun onStop() {
+        unregisterReceiver(packageInstallResultReceiver)
+        super.onStop()
+    }
+
     override fun onResume() {
         super.onResume()
         resumeRevision.intValue += 1
@@ -114,6 +139,7 @@ private fun StoreScreen(
     var downloadingApp by remember { mutableStateOf<StoreAppListing?>(null) }
     var downloadPercent by remember { mutableIntStateOf(0) }
     var installUri by remember { mutableStateOf<Uri?>(null) }
+    var installPackageName by remember { mutableStateOf<String?>(null) }
     var readyInstallAppId by remember { mutableStateOf<String?>(null) }
     var installError by remember { mutableStateOf<String?>(null) }
     var showSignerSettings by remember { mutableStateOf(false) }
@@ -139,18 +165,26 @@ private fun StoreScreen(
         ActivityResultContracts.StartActivityForResult()
     ) {
         val uri = installUri
+        val readyAppId = readyInstallAppId
         if (uri != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             context.packageManager.canRequestPackageInstalls()
         ) {
-            val error = launchApkInstaller(context, uri)
+            val packageName = installPackageName
+            val error = if (packageName != null) {
+                launchStoreInstallOrUpdate(context, uri, packageName)
+            } else {
+                launchApkInstaller(context, uri)
+            }
             if (error != null) {
                 installError = error
             } else {
-                readyInstallAppId?.let { StoreUpdateNotifications.removeReady(context, it) }
+                readyAppId?.let { StoreUpdateNotifications.removeReady(context, it) }
                 readyInstallAppId = null
             }
         } else if (uri != null) {
             installError = "APK kurulum izni verilmedi. Ayarlardan bu kaynağa izin ver."
+            readyAppId?.let { StoreUpdateNotifications.removeReady(context, it) }
+            readyInstallAppId = null
         }
     }
 
@@ -161,9 +195,14 @@ private fun StoreScreen(
         if (installAppIdFromIntent != null) {
             val uri = StoreUpdateNotifications.installUri(context, installAppIdFromIntent)
             if (uri != null) {
-                readyInstallAppId = installAppIdFromIntent
+                installUri = null
+                installPackageName = null
+                readyInstallAppId = null
                 try {
-                    installUri = withContext(Dispatchers.IO) { createInstallableApkUri(context, uri) }
+                    val stagedUri = withContext(Dispatchers.IO) { createInstallableApkUri(context, uri) }
+                    installUri = stagedUri
+                    installPackageName = StoreUpdateNotifications.installPackageName(context, installAppIdFromIntent)
+                    readyInstallAppId = installAppIdFromIntent
                 } catch (error: Exception) {
                     installError = error.message ?: "APK kurulum için hazırlanamadı."
                 }
@@ -175,7 +214,12 @@ private fun StoreScreen(
                     )
                 } else {
                     installUri?.let { stagedUri ->
-                        val error = launchApkInstaller(context, stagedUri)
+                        val packageName = installPackageName
+                        val error = if (packageName != null) {
+                            launchStoreInstallOrUpdate(context, stagedUri, packageName)
+                        } else {
+                            launchApkInstaller(context, stagedUri)
+                        }
                         if (error != null) {
                             installError = error
                         } else {
@@ -224,6 +268,7 @@ private fun StoreScreen(
                         if (validation != null) {
                             installError = validation
                         } else {
+                            installPackageName = app.packageName
                             installUri = try {
                                 withContext(Dispatchers.IO) { createInstallableApkUri(context, uri) }
                             } catch (error: Exception) {
@@ -238,7 +283,7 @@ private fun StoreScreen(
                                 )
                             } else {
                                 installUri?.let { stagedUri ->
-                                    launchApkInstaller(context, stagedUri)?.let { installError = it }
+                                    launchStoreInstallOrUpdate(context, stagedUri, app.packageName)?.let { installError = it }
                                 }
                             }
                         }
@@ -280,7 +325,7 @@ private fun StoreScreen(
             ) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text("Kişisel uygulama mağazan", color = StoreGreen, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                    Text("GitHub Releases üzerinden APK indir. Kurulum ve güncellemeler Android'in güvenli yükleyicisiyle onaylanır.", color = Color(0xFFD2E5DB), fontSize = 11.sp)
+                    Text("Güncellemeler uygun cihazlarda otomatik kurulur. İlk kurulumda veya Android izin istediğinde güvenli onay ekranı açılır.", color = Color(0xFFD2E5DB), fontSize = 11.sp)
                 }
             }
             if (loading && apps.isEmpty()) {
@@ -426,7 +471,7 @@ private fun validateDownloadedApk(context: Context, uri: Uri, app: StoreAppListi
     }
 }
 
-private fun launchApkInstaller(context: Context, uri: Uri): String? {
+internal fun launchApkInstaller(context: Context, uri: Uri): String? {
     val installIntent = createApkInstallIntent(uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     return try {
         try {
