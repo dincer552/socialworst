@@ -23,7 +23,8 @@ object SignerSettings {
     private const val TRANSFORMATION = "AES/GCM/NoPadding"
 
     fun baseUrl(context: Context): String =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("base_url", "") ?: ""
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString("base_url", null)?.takeIf { it.isNotBlank() } ?: "https://signer.dinceryuksek.com"
 
     fun adminToken(context: Context): String {
         val encrypted = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
