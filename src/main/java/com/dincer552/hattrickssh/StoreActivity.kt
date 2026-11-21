@@ -140,7 +140,9 @@ private fun StoreScreen(installAppIdFromIntent: String? = null) {
                         Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
                     )
                 } else {
-                    launchApkInstaller(context, uri)?.let { installError = it }
+                    installUri?.let { stagedUri ->
+                        launchApkInstaller(context, stagedUri)?.let { installError = it }
+                    }
                 }
             }
         }
@@ -198,7 +200,9 @@ private fun StoreScreen(installAppIdFromIntent: String? = null) {
                                     Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
                                 )
                             } else {
-                                launchApkInstaller(context, uri)?.let { installError = it }
+                                installUri?.let { stagedUri ->
+                                    launchApkInstaller(context, stagedUri)?.let { installError = it }
+                                }
                             }
                         }
                     }
