@@ -34,5 +34,14 @@
     "packageName": "com.dincer552.testapk",
     "repository": "dincer552/test-apk",
     "assetName": "test-apk.apk"
+  },
+  {
+    "id": "testpak2",
+    "name": "Mini Zıpla",
+    "description": "Basit zıplama ve engellerden kaçma oyunu",
+    "icon": "🕹️",
+    "packageName": "com.dincer552.testpak2",
+    "repository": "dincer552/testpak2",
+    "assetName": "testpak2.apk"
   }
 ]
