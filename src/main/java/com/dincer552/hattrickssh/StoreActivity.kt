@@ -355,6 +355,10 @@ private fun getInstalledVersionCode(context: Context, packageName: String): Long
 }
 
 private fun validateDownloadedApk(context: Context, uri: Uri, app: StoreAppListing): String? {
+    val expectedVersion = app.release?.versionCode?.toLong()
+        ?: return "Katalogda beklenen APK sürümü bulunamadı."
+    val identityError = validateApkIdentity(context, uri, app.packageName, expectedVersion)
+    if (identityError != null) return identityError
     val expected = app.release?.sha256
     if (expected.isNullOrBlank()) return null
     return try {
