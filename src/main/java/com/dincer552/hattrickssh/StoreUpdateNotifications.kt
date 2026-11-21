@@ -36,6 +36,13 @@ object StoreUpdateNotifications {
 
     fun isReady(context: Context, appId: String): Boolean = installUri(context, appId) != null
 
+    fun installPackageName(context: Context, appId: String): String? {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val ready = JSONObject(prefs.getString(READY, "{}") ?: "{}")
+        val item = ready.optJSONObject(appId) ?: return null
+        return item.optString("packageName").takeIf { it.isNotBlank() }
+    }
+
     fun removeReady(context: Context, appId: String) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val ready = JSONObject(prefs.getString(READY, "{}") ?: "{}")
