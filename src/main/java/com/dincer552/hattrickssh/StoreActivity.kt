@@ -350,7 +350,7 @@ private fun getInstalledVersionCode(context: Context, packageName: String): Long
         context.packageManager.getPackageInfo(packageName, 0)
     }
     if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
-} catch (_: Exception) {
+} catch (_: android.content.pm.PackageManager.NameNotFoundException) {
     null
 }
 
