@@ -34,9 +34,8 @@ The repository now contains a central signing service in [signing-service](./sig
 
 1. Deploy the service on a private VM and expose it only through an HTTPS endpoint (for example, Cloudflare Tunnel). Do not expose its local port publicly.
 2. Generate `SIGNING_ENCRYPTION_KEY` and `SIGNING_ADMIN_TOKEN` on the VM and configure the service as described in [signing-service/README.md](./signing-service/README.md).
-3. In **My App Store → İMZALAMA**, enter the HTTPS service URL and admin token. Select the existing JKS, use alias `hattrickssh`, package `com.dincer552.hattrickssh`, repository `dincer552/socialworst`, and upload it.
-4. In this repository's Settings → Secrets and variables → Actions → Variables, add `APK_SIGNING_SERVICE_URL` with the service HTTPS URL. This is a URL, not a secret.
-5. No per-repository `APK_SIGNING_SERVICE_URL` variable is required for the Store and DYSSH workflows; both use the shared HTTPS signer URL. The initial Store repository remains in the bootstrap allowlist, and additional repositories are registered dynamically from the app.
+3. In **My App Store → İMZALAMA**, enter the HTTPS service URL and admin token. For the Store's first setup, select its original JKS and use alias `hattrickssh` and package `com.dincer552.hattrickssh`.
+4. Store and DYSSH GitHub Actions workflows use the shared HTTPS signer URL directly; no per-repository URL variable or signing password is required. Additional repositories are registered dynamically from My App Store.
 
 If the currently installed Store version does not yet contain the İMZALAMA screen, install the debug APK artifact from the Actions run for this commit as a separate bootstrap app, or provision the initial key using the service API. The debug build has the `.debug` package suffix and does not replace the production app.
 
