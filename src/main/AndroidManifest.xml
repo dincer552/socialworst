@@ -4,9 +4,13 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Keep in sync with packageName values in app-catalog.json. -->
     <queries>
+        <package android:name="com.dincer552.hattrickssh" />
         <package android:name="com.dincer552.dyssh" />
         <package android:name="com.dincer552.instaviewer" />
+        <package android:name="com.dincer552.testapk" />
+        <package android:name="com.dincer552.testpak2" />
     </queries>
     <application
         android:name=".SshClientApplication"
@@ -19,6 +23,15 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.SshClient"
         android:usesCleartextTraffic="false">
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/store_file_paths" />
+        </provider>
         <activity
             android:name=".StoreActivity"
             android:exported="true"
