@@ -129,4 +129,50 @@ object SignerKeyUploader {
             connection.disconnect()
         }
     }
+
+    suspend fun registerRepository(
+        baseUrl: String,
+        adminToken: String,
+        keyId: String,
+        repositoryUrl: String
+    ): String = withContext(Dispatchers.IO) {
+        require(baseUrl.startsWith("https://", ignoreCase = true)) {
+            "İmza servisi adresi HTTPS olmalı."
+        }
+        require(adminToken.isNotBlank()) { "Yönetici token gerekli." }
+        require(keyId.matches(Regex("[a-z0-9][a-z0-9._-]{1,63}"))) { "Key ID geçersiz." }
+        require(repositoryUrl.isNotBlank()) { "GitHub repo linki gerekli." }
+
+        val boundary = "----MyAppStore-${UUID.randomUUID()}"
+        val connection = (URL("${baseUrl.trimEnd('/')}/v1/admin/repositories").openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            connectTimeout = 20_000
+            readTimeout = 60_000
+            doOutput = true
+            setRequestProperty("Authorization", "Bearer $adminToken")
+            setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+            setRequestProperty("Accept", "application/json")
+        }
+        try {
+            connection.outputStream.use { output ->
+                fun writeField(name: String, value: String) {
+                    output.write("--$boundary\\r\\n".toByteArray())
+                    output.write("Content-Disposition: form-data; name=\\"$name\\"\\r\\n\\r\\n".toByteArray())
+                    output.write(value.toByteArray(Charsets.UTF_8))
+                    output.write("\\r\\n".toByteArray())
+                }
+                writeField("repository", repositoryUrl.trim())
+                writeField("key_id", keyId.trim())
+                output.write("--$boundary--\\r\\n".toByteArray())
+            }
+            val code = connection.responseCode
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            if (code !in 200..299) throw IOException("Repo bağlanamadı (HTTP $code): $body")
+            body
+        } finally {
+            connection.disconnect()
+        }
+    }
+
 }
