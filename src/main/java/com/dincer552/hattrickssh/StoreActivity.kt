@@ -367,19 +367,24 @@ private fun validateDownloadedApk(context: Context, uri: Uri, app: StoreAppListi
 }
 
 private fun launchApkInstaller(context: Context, uri: Uri): String? {
-    val intent = Intent(Intent.ACTION_VIEW).apply {
-        setDataAndType(uri, "application/vnd.android.package-archive")
+    val mimeType = "application/vnd.android.package-archive"
+    fun createInstallIntent(action: String): Intent = Intent(action).apply {
+        setDataAndType(uri, mimeType)
+        clipData = android.content.ClipData.newUri(context.contentResolver, "APK", uri)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
+
     return try {
-        if (intent.resolveActivity(context.packageManager) == null) {
-            "Android paket yükleyicisi bulunamadı. Cihazın sistem kurulum uygulamasını kontrol et."
-        } else {
-            context.startActivity(intent)
-            null
+        // Android's dedicated package-install action is preferred on Android 8+.
+        try {
+            context.startActivity(createInstallIntent(Intent.ACTION_INSTALL_PACKAGE))
+        } catch (_: android.content.ActivityNotFoundException) {
+            // Some OEM installers expose only the generic VIEW handler.
+            context.startActivity(createInstallIntent(Intent.ACTION_VIEW))
         }
+        null
     } catch (error: Exception) {
-        "Kurulum ekranı açılamadı: ${error.message ?: error.javaClass.simpleName}"
+        "APK indirildi ancak Android kurulum ekranı açılamadı: ${error.message ?: error.javaClass.simpleName}. My App Store için 'Bilinmeyen uygulamaları yükle' iznini kontrol et."
     }
 }
