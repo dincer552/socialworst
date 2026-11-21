@@ -54,6 +54,7 @@ private val StoreMuted = Color(0xFF91A1B2)
 
 class StoreActivity : ComponentActivity() {
     private val installRequestState = mutableStateOf<Pair<String, Int>?>(null)
+    private val resumeRevision = mutableIntStateOf(0)
     private var installRequestSequence = 0
 
     private fun captureInstallRequest(source: Intent?) {
@@ -78,7 +79,10 @@ class StoreActivity : ComponentActivity() {
                 surface = StorePanel,
                 onSurface = Color.White
             )) {
-                StoreScreen(installRequest = installRequestState.value)
+                StoreScreen(
+                    installRequest = installRequestState.value,
+                    statusRefreshKey = resumeRevision.intValue
+                )
             }
         }
     }
@@ -88,10 +92,18 @@ class StoreActivity : ComponentActivity() {
         setIntent(intent)
         captureInstallRequest(intent)
     }
+
+    override fun onResume() {
+        super.onResume()
+        resumeRevision.intValue += 1
+    }
 }
 
 @Composable
-private fun StoreScreen(installRequest: Pair<String, Int>? = null) {
+private fun StoreScreen(
+    installRequest: Pair<String, Int>? = null,
+    statusRefreshKey: Int = 0
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var apps by remember { mutableStateOf<List<StoreAppListing>>(emptyList()) }
@@ -162,9 +174,6 @@ private fun StoreScreen(installRequest: Pair<String, Int>? = null) {
             }
         }
     }
-
-    // Also refresh when app comes to foreground
-    LaunchedEffect(apps) { }
 
     LaunchedEffect(downloadId) {
         val id = downloadId ?: return@LaunchedEffect
@@ -280,7 +289,7 @@ private fun StoreScreen(installRequest: Pair<String, Int>? = null) {
                         app = app,
                         context = context,
                         busy = downloadId != null,
-                        refreshKey = catalogRevision,
+                        refreshKey = "$catalogRevision:$statusRefreshKey",
                         onInstall = {
                             installError = null
                             downloadingApp = app
@@ -310,7 +319,7 @@ private fun StoreAppCard(
     app: StoreAppListing,
     context: Context,
     busy: Boolean,
-    refreshKey: Int,
+    refreshKey: String,
     onInstall: () -> Unit
 ) {
     val installedCode = remember(app.packageName, refreshKey) { getInstalledVersionCode(context, app.packageName) }
