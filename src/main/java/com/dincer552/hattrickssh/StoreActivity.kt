@@ -362,6 +362,7 @@ private fun StoreAppCard(
                     Text(
                         when (packageState) {
                             StorePackageState.NOT_INSTALLED -> "APK İNDİR VE KUR"
+                            StorePackageState.INSTALLED -> "KURULU"
                             StorePackageState.UPDATE_AVAILABLE -> "GÜNCELLE • ${release.versionName}"
                             StorePackageState.UP_TO_DATE -> "ZATEN GÜNCEL"
                         },
