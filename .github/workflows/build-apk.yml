@@ -33,7 +33,7 @@ jobs:
         run: python3 -m compileall -q signing-service
 
       - name: Set up Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
@@ -48,9 +48,9 @@ jobs:
         with:
           gradle-version: "8.11.1"
 
-      - name: Run unit tests and build debug APK
+      - name: Run unit tests
         run: |
-          gradle --no-daemon -PappVersionCode="$APP_VERSION_CODE" -PappVersionName="$APP_VERSION_NAME" testDebugUnitTest assembleDebug
+          gradle --no-daemon -PappVersionCode="$APP_VERSION_CODE" -PappVersionName="$APP_VERSION_NAME" testDebugUnitTest
 
       - name: Build unsigned release APK
         if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
@@ -59,23 +59,6 @@ jobs:
           APK="$(find build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)"
           test -n "$APK" && test -s "$APK"
           echo "UNSIGNED_APK=$APK" >> "$GITHUB_ENV"
-
-      - name: Upload debug APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: my-app-store-debug-apk
-          path: build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Upload unsigned release for diagnostics
-        if: env.UNSIGNED_APK != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: my-app-store-unsigned-${{ github.run_number }}
-          path: ${{ env.UNSIGNED_APK }}
-          if-no-files-found: error
-          retention-days: 7
 
       - name: Validate central signing endpoint
         if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
