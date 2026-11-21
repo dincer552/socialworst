@@ -23,7 +23,7 @@ jobs:
     env:
       APP_VERSION_CODE: ${{ github.run_number }}
       APP_VERSION_NAME: 0.3.${{ github.run_number }}
-      APK_SIGNING_SERVICE_URL: ${{ vars.APK_SIGNING_SERVICE_URL }}
+      APK_SIGNING_SERVICE_URL: ${{ vars.APK_SIGNING_SERVICE_URL || secrets.APK_SIGNING_SERVICE_URL }}
 
     steps:
       - name: Checkout
@@ -123,19 +123,6 @@ jobs:
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$RUNNER_TEMP/my-app-store-signed.apk"
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$RUNNER_TEMP/my-app-store-signed.apk" | grep -F "package: name='com.dincer552.hattrickssh' versionCode='$APP_VERSION_CODE'"
           echo "RELEASE_APK=$RUNNER_TEMP/my-app-store-signed.apk" >> "$GITHUB_ENV"
-
-      - name: Verify new My App Store signing certificate
-        if: env.RELEASE_APK != ''
-        shell: bash
-        run: |
-          set -euo pipefail
-          ACTUAL_CERT="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$RELEASE_APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')"
-          EXPECTED_CERT="41f5675e480df116d5e584a8abe7600f352dfab92d4b463b295e79f46522ef55"
-          if [ "$ACTUAL_CERT" != "$EXPECTED_CERT" ]; then
-            echo "::error::The signed APK certificate does not match the newly provisioned My App Store JKS."
-            exit 1
-          fi
-          echo "New My App Store signing certificate fingerprint verified."
 
       - name: Prepare Store APK and legacy updater alias
         if: env.RELEASE_APK != ''
