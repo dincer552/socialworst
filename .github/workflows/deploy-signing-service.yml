@@ -1,0 +1,59 @@
+name: Deploy central APK signer to Azure VM
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "signing-service/**"
+      - ".github/workflows/deploy-signing-service.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-central-apk-signer
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate deployment credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$SSH_PRIVATE_KEY" ]; then
+            echo "::error::Repository secret SSH_PRIVATE_KEY is missing."
+            exit 1
+          fi
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/id_signer_deploy"
+          chmod 600 "$HOME/.ssh/id_signer_deploy"
+          ssh-keygen -y -f "$HOME/.ssh/id_signer_deploy" > "$HOME/.ssh/id_signer_deploy.pub"
+
+      - name: Install Cloudflare Tunnel client
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o "$RUNNER_TEMP/cloudflared"
+          chmod +x "$RUNNER_TEMP/cloudflared"
+
+      - name: Deploy signer code and restart service
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat signing-service/main.py | ssh -i "$HOME/.ssh/id_signer_deploy" \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -o ConnectTimeout=20 \
+            -o ProxyCommand="$RUNNER_TEMP/cloudflared access ssh --hostname %h" \
+            azureuser@ssh.dinceryuksek.com \
+            'sudo test -d /opt/apk-signing/signing-service && sudo tee /tmp/apk-signing-main.py >/dev/null && sudo install -o root -g root -m 0644 /tmp/apk-signing-main.py /opt/apk-signing/signing-service/main.py && sudo rm -f /tmp/apk-signing-main.py && sudo systemctl restart apk-signing && sleep 2 && curl --fail --silent --show-error http://127.0.0.1:8787/health'
