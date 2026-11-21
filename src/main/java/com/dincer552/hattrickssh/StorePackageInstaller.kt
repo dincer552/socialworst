@@ -131,14 +131,18 @@ class StorePackageInstallReceiver : BroadcastReceiver() {
                         confirmation.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                         context.startActivity(confirmation)
                     } catch (error: Exception) {
+                        val fallbackError = openInteractiveFallback(context, intent)
+                        val detail = fallbackError ?: "Android'in normal kurulum ekranı açıldı."
                         Toast.makeText(
                             context,
-                            "Android onay ekranı açılamadı: ${error.message ?: error.javaClass.simpleName}",
+                            "Onay ekranı doğrudan açılamadı (\${error.javaClass.simpleName}). $detail",
                             Toast.LENGTH_LONG
                         ).show()
                     }
                 } else {
-                    Toast.makeText(context, "Android kurulum onayı gerekli ancak onay ekranı alınamadı.", Toast.LENGTH_LONG).show()
+                    val fallbackError = openInteractiveFallback(context, intent)
+                    val detail = fallbackError ?: "Android'in normal kurulum ekranı açıldı."
+                    Toast.makeText(context, "Kurulum onayı gerekli. $detail", Toast.LENGTH_LONG).show()
                 }
             }
 
@@ -158,6 +162,11 @@ class StorePackageInstallReceiver : BroadcastReceiver() {
                 context.sendBroadcast(Intent(ACTION_INSTALL_FINISHED).setPackage(context.packageName))
             }
         }
+    }
+
+    private fun openInteractiveFallback(context: Context, source: Intent): String? {
+        val uri = source.getStringExtra(EXTRA_APK_URI)?.let(Uri::parse) ?: return "Doğrulanmış APK adresi bulunamadı."
+        return launchApkInstaller(context, uri)
     }
 
     @Suppress("DEPRECATION")
