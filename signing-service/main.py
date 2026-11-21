@@ -220,7 +220,8 @@ async def provision_key(
 
     if existing:
         # Never silently replace the certificate behind an existing Android package.
-        if (existing.get("package_name") != package_name or existing.get("keystore_b64") != encoded_keystore\n                or existing.get("key_password") != key_password):
+        if (existing.get("package_name") != package_name or existing.get("keystore_b64") != encoded_keystore
+                or existing.get("key_password") != key_password):
             raise HTTPException(status_code=409, detail="existing_signing_key_is_protected")
         if existing.get("key_alias") != key_alias.strip():
             raise HTTPException(status_code=409, detail="existing_signing_alias_is_protected")
