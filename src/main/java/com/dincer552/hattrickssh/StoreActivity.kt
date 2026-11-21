@@ -53,17 +53,24 @@ private val StoreGreen = Color(0xFF38D98A)
 private val StoreMuted = Color(0xFF91A1B2)
 
 class StoreActivity : ComponentActivity() {
+    private val installRequestState = mutableStateOf<Pair<String, Int>?>(null)
+    private var installRequestSequence = 0
+
+    private fun captureInstallRequest(source: Intent?) {
+        val appId = source?.getStringExtra("install_app_id")
+        if (!appId.isNullOrBlank()) {
+            installRequestSequence += 1
+            installRequestState.value = appId to installRequestSequence
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = android.graphics.Color.rgb(8, 13, 18)
         window.navigationBarColor = android.graphics.Color.BLACK
-        
-        // Start periodic background update checks
         StoreUpdateWorker.enqueuePeriodicCheck(this)
-        
-        // Get install_app_id from intent if present
-        val installAppIdFromIntent = intent?.getStringExtra("install_app_id")
-        
+        captureInstallRequest(intent)
+
         setContent {
             MaterialTheme(colorScheme = darkColorScheme(
                 primary = StoreGreen,
@@ -71,14 +78,20 @@ class StoreActivity : ComponentActivity() {
                 surface = StorePanel,
                 onSurface = Color.White
             )) {
-                StoreScreen(installAppIdFromIntent = installAppIdFromIntent)
+                StoreScreen(installRequest = installRequestState.value)
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        captureInstallRequest(intent)
     }
 }
 
 @Composable
-private fun StoreScreen(installAppIdFromIntent: String? = null) {
+private fun StoreScreen(installRequest: Pair<String, Int>? = null) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var apps by remember { mutableStateOf<List<StoreAppListing>>(emptyList()) }
@@ -123,13 +136,15 @@ private fun StoreScreen(installAppIdFromIntent: String? = null) {
     }
 
     // Check for ready downloads from background worker notifications
-    LaunchedEffect(Unit) {
+    LaunchedEffect(installRequest) {
         refreshCatalog()
+        val installAppIdFromIntent = installRequest?.first
         if (installAppIdFromIntent != null) {
             val uri = StoreUpdateNotifications.installUri(context, installAppIdFromIntent)
             if (uri != null) {
                 try {
                     installUri = withContext(Dispatchers.IO) { createInstallableApkUri(context, uri) }
+                    StoreUpdateNotifications.removeReady(context, installAppIdFromIntent)
                 } catch (error: Exception) {
                     installError = error.message ?: "APK kurulum için hazırlanamadı."
                 }
