@@ -325,11 +325,11 @@ private fun StoreAppCard(
     val installedCode = remember(app.packageName, refreshKey) { getInstalledVersionCode(context, app.packageName) }
     val release = app.release
     val packageState = resolveStorePackageState(installedCode, release?.versionCode?.toLong())
-    val status = when {
-        release == null -> "Henüz GitHub Release yayınlanmamış"
-        packageState == StorePackageState.NOT_INSTALLED -> "Yüklenmedi"
-        packageState == StorePackageState.UPDATE_AVAILABLE -> "Güncelleme mevcut"
-        else -> "Yüklü • Güncel"
+    val status = when (packageState) {
+        StorePackageState.NOT_INSTALLED -> if (release == null) "Kurulu değil • Release bekleniyor" else "Yüklenmedi"
+        StorePackageState.INSTALLED -> "Kurulu • Sürüm bilgisi yok"
+        StorePackageState.UPDATE_AVAILABLE -> "Güncelleme mevcut"
+        StorePackageState.UP_TO_DATE -> "Yüklü • Güncel"
     }
     Card(
         colors = CardDefaults.cardColors(containerColor = StorePanel),
@@ -346,7 +346,11 @@ private fun StoreAppCard(
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(release?.versionName ?: "Sürüm bekleniyor", color = StoreMuted, fontSize = 10.sp)
-                Text(status, color = if (release == null) StoreMuted else StoreGreen, fontSize = 10.sp)
+                Text(
+                    status,
+                    color = if (packageState == StorePackageState.UPDATE_AVAILABLE || packageState == StorePackageState.UP_TO_DATE) StoreGreen else StoreMuted,
+                    fontSize = 10.sp
+                )
             }
             if (release != null) {
                 Button(
