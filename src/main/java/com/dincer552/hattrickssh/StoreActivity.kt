@@ -300,10 +300,11 @@ private fun StoreAppCard(
 ) {
     val installedCode = remember(app.packageName, refreshKey) { getInstalledVersionCode(context, app.packageName) }
     val release = app.release
+    val packageState = resolveStorePackageState(installedCode, release?.versionCode?.toLong())
     val status = when {
         release == null -> "Henüz GitHub Release yayınlanmamış"
-        installedCode == null -> "Yüklenmedi"
-        installedCode < release.versionCode -> "Güncelleme mevcut"
+        packageState == StorePackageState.NOT_INSTALLED -> "Yüklenmedi"
+        packageState == StorePackageState.UPDATE_AVAILABLE -> "Güncelleme mevcut"
         else -> "Yüklü • Güncel"
     }
     Card(
@@ -326,15 +327,15 @@ private fun StoreAppCard(
             if (release != null) {
                 Button(
                     onClick = onInstall,
-                    enabled = !busy && (installedCode == null || installedCode < release.versionCode),
+                    enabled = !busy && packageState != StorePackageState.UP_TO_DATE,
                     modifier = Modifier.fillMaxWidth().height(42.dp),
                     shape = RoundedCornerShape(10.dp)
                 ) {
                     Text(
-                        when {
-                            installedCode == null -> "APK İNDİR VE KUR"
-                            installedCode < release.versionCode -> "GÜNCELLE • ${release.versionName}"
-                            else -> "ZATEN GÜNCEL"
+                        when (packageState) {
+                            StorePackageState.NOT_INSTALLED -> "APK İNDİR VE KUR"
+                            StorePackageState.UPDATE_AVAILABLE -> "GÜNCELLE • ${release.versionName}"
+                            StorePackageState.UP_TO_DATE -> "ZATEN GÜNCEL"
                         },
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
