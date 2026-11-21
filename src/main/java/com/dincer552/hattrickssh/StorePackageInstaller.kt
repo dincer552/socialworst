@@ -15,24 +15,12 @@ import java.io.IOException
  * threshold and installer/update-owner rules are satisfied. The installer still
  * handles ownership enforcement and reports STATUS_PENDING_USER_ACTION otherwise.
  */
-internal fun minimumTargetSdkForNoUserActionUpdate(platformApi: Int): Int? = when {
-    platformApi >= 37 -> 35
-    platformApi >= 36 -> 34
-    platformApi >= 35 -> 33
-    platformApi >= 34 -> 31
-    platformApi >= 33 -> 30
-    platformApi >= 31 -> 29
-    else -> null
-}
-
-internal fun supportsNoUserActionUpdateTarget(platformApi: Int, installedTargetSdk: Int): Boolean {
-    val minimum = minimumTargetSdkForNoUserActionUpdate(platformApi) ?: return false
-    return installedTargetSdk >= minimum
-}
+internal fun shouldAttemptPackageInstallerUpdate(platformApi: Int, isInstalled: Boolean): Boolean =
+    platformApi >= 31 && isInstalled
 
 @Suppress("DEPRECATION")
-private fun installedTargetSdk(context: Context, packageName: String): Int = try {
-    val info = if (Build.VERSION.SDK_INT >= 33) {
+private fun isPackageInstalled(context: Context, packageName: String): Boolean = try {
+    if (Build.VERSION.SDK_INT >= 33) {
         context.packageManager.getPackageInfo(
             packageName,
             android.content.pm.PackageManager.PackageInfoFlags.of(0)
@@ -40,9 +28,9 @@ private fun installedTargetSdk(context: Context, packageName: String): Int = try
     } else {
         context.packageManager.getPackageInfo(packageName, 0)
     }
-    info.applicationInfo?.targetSdkVersion ?: 0
+    true
 } catch (_: Exception) {
-    0
+    false
 }
 
 /**
@@ -56,9 +44,7 @@ fun launchStoreInstallOrUpdate(context: Context, apkUri: Uri, packageName: Strin
         return launchApkInstaller(context, apkUri)
     }
 
-    val installedTargetSdk = installedTargetSdk(context, packageName)
-
-    if (!supportsNoUserActionUpdateTarget(Build.VERSION.SDK_INT, installedTargetSdk)) {
+    if (!shouldAttemptPackageInstallerUpdate(Build.VERSION.SDK_INT, isPackageInstalled(context, packageName))) {
         return launchApkInstaller(context, apkUri)
     }
 
