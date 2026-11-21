@@ -3,6 +3,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <!-- Keep in sync with packageName values in app-catalog.json. -->
     <queries>
@@ -43,6 +44,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <receiver
+            android:name=".StorePackageInstallReceiver"
+            android:exported="false" />
         <receiver
             android:name=".StoreDownloadCompletedReceiver"
             android:exported="true"
