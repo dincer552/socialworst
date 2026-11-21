@@ -7,6 +7,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -243,23 +244,76 @@ async def provision_key(
 
 
 
+def generate_signing_profile(key_id: str, repository: str) -> dict:
+    """Create a dedicated Android signing identity for a new repository."""
+    owner, repo_name = repository.split("/", 1)
+    owner_part = re.sub(r"[^A-Za-z0-9_]", "_", owner)
+    repo_part = re.sub(r"[^A-Za-z0-9_]", "", repo_name)
+    if not repo_part or not repo_part[0].isalpha():
+        repo_part = "app" + repo_part
+    package_name = f"com.{owner_part.lower()}.{repo_part.lower()}"
+    if not PACKAGE_RE.fullmatch(package_name):
+        raise HTTPException(status_code=400, detail="could_not_derive_android_package_name")
+
+    keytool = shutil.which("keytool")
+    if not keytool:
+        raise HTTPException(status_code=503, detail="keytool_unavailable_on_signing_server")
+
+    password = secrets.token_urlsafe(36)
+    alias = "app-signing"
+    with tempfile.TemporaryDirectory(prefix="apk-keygen-") as temp:
+        keystore_path = Path(temp) / f"{key_id}.jks"
+        run = subprocess.run(
+            [
+                keytool, "-genkeypair", "-noprompt",
+                "-keystore", str(keystore_path),
+                "-storetype", "JKS",
+                "-storepass", password,
+                "-keypass", password,
+                "-alias", alias,
+                "-keyalg", "RSA",
+                "-keysize", "3072",
+                "-validity", "10000",
+                "-dname", f"CN={repository}, OU=My App Store, O={owner}, C=TR",
+            ],
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, text=True, timeout=60, check=False,
+        )
+        if run.returncode != 0 or not keystore_path.is_file():
+            raise HTTPException(status_code=503, detail="automatic_signing_key_generation_failed")
+        raw = keystore_path.read_bytes()
+
+    return {
+        "package_name": package_name,
+        "repository": repository,
+        "repositories": [repository],
+        "key_alias": alias,
+        "key_password": password,
+        "keystore_b64": base64.b64encode(raw).decode("ascii"),
+    }
+
+
 @APP.post("/v1/admin/repositories")
 def register_repository(
     repository: str = Form(...),
     key_id: str = Form(...),
     authorization: str | None = Header(default=None),
 ):
-    """Attach a GitHub repository URL to an already provisioned package key."""
+    """Attach a repository to an existing key, or create a dedicated key on first use."""
     require_admin(authorization)
     safe_key_id(key_id)
     repository = normalize_repository(repository)
-    config = read_key(key_id)
+    try:
+        config = read_key(key_id)
+    except HTTPException as exc:
+        if exc.status_code != 404:
+            raise
+        config = generate_signing_profile(key_id, repository)
+        save_key(key_id, config)
+
     repositories = key_repositories(config)
-    if not repositories:
-        raise HTTPException(status_code=409, detail="signing_key_has_no_repository_binding")
     repositories.add(repository)
     config["repositories"] = sorted(repositories)
-    # Keep the original field for compatibility with older service deployments.
     config["repository"] = sorted(repositories)[0]
     save_key(key_id, config)
     save_allowed_repositories(allowed_repositories() | {repository})
@@ -269,6 +323,7 @@ def register_repository(
         "package_name": config["package_name"],
         "repository": repository,
         "repositories": sorted(repositories),
+        "key_created": config.get("key_alias") == "app-signing",
     }
 
 
