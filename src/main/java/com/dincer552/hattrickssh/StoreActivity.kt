@@ -114,6 +114,7 @@ private fun StoreScreen(
     var downloadingApp by remember { mutableStateOf<StoreAppListing?>(null) }
     var downloadPercent by remember { mutableIntStateOf(0) }
     var installUri by remember { mutableStateOf<Uri?>(null) }
+    var readyInstallAppId by remember { mutableStateOf<String?>(null) }
     var installError by remember { mutableStateOf<String?>(null) }
     var showSignerSettings by remember { mutableStateOf(false) }
 
@@ -141,7 +142,13 @@ private fun StoreScreen(
         if (uri != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             context.packageManager.canRequestPackageInstalls()
         ) {
-            launchApkInstaller(context, uri)?.let { installError = it }
+            val error = launchApkInstaller(context, uri)
+            if (error != null) {
+                installError = error
+            } else {
+                readyInstallAppId?.let { StoreUpdateNotifications.removeReady(context, it) }
+                readyInstallAppId = null
+            }
         } else if (uri != null) {
             installError = "APK kurulum izni verilmedi. Ayarlardan bu kaynağa izin ver."
         }
@@ -154,9 +161,9 @@ private fun StoreScreen(
         if (installAppIdFromIntent != null) {
             val uri = StoreUpdateNotifications.installUri(context, installAppIdFromIntent)
             if (uri != null) {
+                readyInstallAppId = installAppIdFromIntent
                 try {
                     installUri = withContext(Dispatchers.IO) { createInstallableApkUri(context, uri) }
-                    StoreUpdateNotifications.removeReady(context, installAppIdFromIntent)
                 } catch (error: Exception) {
                     installError = error.message ?: "APK kurulum için hazırlanamadı."
                 }
@@ -168,7 +175,13 @@ private fun StoreScreen(
                     )
                 } else {
                     installUri?.let { stagedUri ->
-                        launchApkInstaller(context, stagedUri)?.let { installError = it }
+                        val error = launchApkInstaller(context, stagedUri)
+                        if (error != null) {
+                            installError = error
+                        } else {
+                            StoreUpdateNotifications.removeReady(context, installAppIdFromIntent)
+                            readyInstallAppId = null
+                        }
                     }
                 }
             }
