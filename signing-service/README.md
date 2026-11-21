@@ -82,5 +82,6 @@ Repo ilk kez bir JKS ile kaydedildiğinde servis onu izin listesine otomatik ekl
 
 - `PUT /v1/admin/keys/{key_id}`: Bearer admin token + multipart `keystore`, `package_name`, `repository`, `key_alias`, `key_password`.
 - `POST /v1/admin/repositories`: Bearer admin token + multipart `repository` (GitHub repo URL veya `owner/repo`) ve `key_id`; mevcut anahtar profiline repo ekler.
+- `POST /v1/bootstrap`: yalnızca imzası doğrulanmış GitHub Actions OIDC kimliğiyle çalışır. `main` dalındaki repo, kendi yeni paket anahtarını ilk derlemede otomatik oluşturabilir. Var olan başka uygulama anahtarına repo ekleyemez; mevcut anahtar için yönetici bağlantısı gerekir.
 - `POST /v1/sign`: Bearer GitHub OIDC token + multipart `key_id`, `apk`.
 - `GET /health`: servis sağlık kontrolü.
