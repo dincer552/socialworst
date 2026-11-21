@@ -35,6 +35,31 @@ object StoreUpdateNotifications {
     }
 
     fun isReady(context: Context, appId: String): Boolean = installUri(context, appId) != null
+
+    fun removeReady(context: Context, appId: String) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val ready = JSONObject(prefs.getString(READY, "{}") ?: "{}")
+        if (ready.has(appId)) {
+            ready.remove(appId)
+            prefs.edit().putString(READY, ready.toString()).apply()
+        }
+    }
+
+    fun removePendingDownload(context: Context, downloadId: Long) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val pending = JSONObject(prefs.getString(PENDING, "{}") ?: "{}")
+        val keys = pending.keys()
+        var removed = false
+        while (keys.hasNext()) {
+            val key = keys.next()
+            if (pending.optJSONObject(key)?.optLong("downloadId") == downloadId) {
+                pending.remove(key)
+                removed = true
+                break
+            }
+        }
+        if (removed) prefs.edit().putString(PENDING, pending.toString()).apply()
+    }
 }
 
 class StoreDownloadCompletedReceiver : BroadcastReceiver() {
@@ -54,17 +79,29 @@ class StoreDownloadCompletedReceiver : BroadcastReceiver() {
         }
         val metadata = item ?: return
         val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val cursor = manager.query(DownloadManager.Query().setFilterById(id)) ?: return
-        val uri = cursor.use {
-            if (!it.moveToFirst() || it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)) != DownloadManager.STATUS_SUCCESSFUL) return
-            manager.getUriForDownloadedFile(id)
-        } ?: return
+        val cursor = manager.query(DownloadManager.Query().setFilterById(id))
+        if (cursor == null) {
+            StoreUpdateNotifications.removePendingDownload(context, id)
+            return
+        }
+        val queryResult = cursor.use {
+            if (!it.moveToFirst()) null
+            else it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)) to manager.getUriForDownloadedFile(id)
+        }
+        if (queryResult == null || queryResult.first != DownloadManager.STATUS_SUCCESSFUL) {
+            StoreUpdateNotifications.removePendingDownload(context, id)
+            return
+        }
+        val uri = queryResult.second
+        if (uri == null) {
+            StoreUpdateNotifications.removePendingDownload(context, id)
+            return
+        }
         val expectedPackage = metadata.optString("packageName")
         val expectedVersion = metadata.optLong("versionCode")
         val identityError = validateApkIdentity(context, uri, expectedPackage, expectedVersion)
         if (identityError != null) {
-            pending.remove(matchedKey)
-            prefs.edit().putString(StoreUpdateNotifications.PENDING, pending.toString()).apply()
+            StoreUpdateNotifications.removePendingDownload(context, id)
             return
         }
         // The archive identity and optional SHA-256 are checked before publishing it as installable.
@@ -74,9 +111,15 @@ class StoreDownloadCompletedReceiver : BroadcastReceiver() {
             context.contentResolver.openInputStream(uri)?.use { input ->
                 val buffer = ByteArray(16 * 1024)
                 while (true) { val count = input.read(buffer); if (count < 0) break; digest.update(buffer, 0, count) }
-            } ?: return
+            } ?: run {
+                StoreUpdateNotifications.removePendingDownload(context, id)
+                return
+            }
             val actualSha = digest.digest().joinToString("") { "%02x".format(it) }
-            if (!actualSha.equals(expectedSha, true)) return
+            if (!actualSha.equals(expectedSha, true)) {
+                StoreUpdateNotifications.removePendingDownload(context, id)
+                return
+            }
         }
         val ready = JSONObject(prefs.getString(StoreUpdateNotifications.READY, "{}") ?: "{}")
         ready.put(metadata.optString("appId"), JSONObject(metadata.toString()).put("uri", uri.toString()))
