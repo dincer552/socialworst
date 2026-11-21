@@ -135,7 +135,7 @@ class StorePackageInstallReceiver : BroadcastReceiver() {
                         val detail = fallbackError ?: "Android'in normal kurulum ekranı açıldı."
                         Toast.makeText(
                             context,
-                            "Onay ekranı doğrudan açılamadı (\${error.javaClass.simpleName}). $detail",
+                            "Onay ekranı doğrudan açılamadı (${error.javaClass.simpleName}). $detail",
                             Toast.LENGTH_LONG
                         ).show()
                     }
