@@ -156,14 +156,14 @@ object SignerKeyUploader {
         try {
             connection.outputStream.use { output ->
                 fun writeField(name: String, value: String) {
-                    output.write("--$boundary\\r\\n".toByteArray())
-                    output.write("Content-Disposition: form-data; name=\\"$name\\"\\r\\n\\r\\n".toByteArray())
+                    output.write("--$boundary\r\n".toByteArray())
+                    output.write("Content-Disposition: form-data; name=\\"$name\\"\r\n\r\n".toByteArray())
                     output.write(value.toByteArray(Charsets.UTF_8))
-                    output.write("\\r\\n".toByteArray())
+                    output.write("\r\n".toByteArray())
                 }
                 writeField("repository", repositoryUrl.trim())
                 writeField("key_id", keyId.trim())
-                output.write("--$boundary--\\r\\n".toByteArray())
+                output.write("--$boundary--\r\n".toByteArray())
             }
             val code = connection.responseCode
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
