@@ -53,7 +53,8 @@ jobs:
           gradle --no-daemon -PappVersionCode="$APP_VERSION_CODE" -PappVersionName="$APP_VERSION_NAME" testDebugUnitTest
 
       - name: Build unsigned release APK
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        # Compile the release variant on PRs too, but keep signing and publishing restricted to main.
+        if: github.event_name == 'pull_request' || (github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch'))
         run: |
           gradle --no-daemon -PappVersionCode="$APP_VERSION_CODE" -PappVersionName="$APP_VERSION_NAME" assembleRelease
           APK="$(find build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)"
@@ -77,7 +78,7 @@ jobs:
 
       - name: Obtain short-lived GitHub OIDC token
         id: oidc
-        if: env.UNSIGNED_APK != '' && env.APK_SIGNING_SERVICE_URL != ''
+        if: env.UNSIGNED_APK != '' && env.APK_SIGNING_SERVICE_URL != '' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         shell: bash
         run: |
           set -euo pipefail
