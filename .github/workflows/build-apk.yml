@@ -23,7 +23,7 @@ jobs:
     env:
       APP_VERSION_CODE: ${{ github.run_number }}
       APP_VERSION_NAME: 0.3.${{ github.run_number }}
-      APK_SIGNING_SERVICE_URL: ${{ vars.APK_SIGNING_SERVICE_URL || secrets.APK_SIGNING_SERVICE_URL }}
+      APK_SIGNING_SERVICE_URL: https://signer.dinceryuksek.com
 
     steps:
       - name: Checkout
