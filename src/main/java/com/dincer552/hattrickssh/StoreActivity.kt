@@ -116,9 +116,9 @@ private fun StoreScreen(installAppIdFromIntent: String? = null) {
         if (uri != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             context.packageManager.canRequestPackageInstalls()
         ) {
-            launchApkInstaller(context, uri)
+            launchApkInstaller(context, uri)?.let { installError = it }
         } else if (uri != null) {
-            installError = "APK kurulum izni verilmedi."
+            installError = "APK kurulum izni verilmedi. Ayarlardan bu kaynağa izin ver."
         }
     }
 
@@ -136,7 +136,7 @@ private fun StoreScreen(installAppIdFromIntent: String? = null) {
                         Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
                     )
                 } else {
-                    launchApkInstaller(context, uri)
+                    launchApkInstaller(context, uri)?.let { installError = it }
                 }
             }
         }
@@ -189,7 +189,7 @@ private fun StoreScreen(installAppIdFromIntent: String? = null) {
                                     Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
                                 )
                             } else {
-                                launchApkInstaller(context, uri)
+                                launchApkInstaller(context, uri)?.let { installError = it }
                             }
                         }
                     }
@@ -366,11 +366,20 @@ private fun validateDownloadedApk(context: Context, uri: Uri, app: StoreAppListi
     }
 }
 
-private fun launchApkInstaller(context: Context, uri: Uri) {
-    val intent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
-        data = uri
+private fun launchApkInstaller(context: Context, uri: Uri): String? {
+    val intent = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(uri, "application/vnd.android.package-archive")
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
-    context.startActivity(intent)
+    return try {
+        if (intent.resolveActivity(context.packageManager) == null) {
+            "Android paket yükleyicisi bulunamadı. Cihazın sistem kurulum uygulamasını kontrol et."
+        } else {
+            context.startActivity(intent)
+            null
+        }
+    } catch (error: Exception) {
+        "Kurulum ekranı açılamadı: ${error.message ?: error.javaClass.simpleName}"
+    }
 }
