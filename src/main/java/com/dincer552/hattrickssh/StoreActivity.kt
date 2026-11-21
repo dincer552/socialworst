@@ -128,8 +128,12 @@ private fun StoreScreen(installAppIdFromIntent: String? = null) {
         if (installAppIdFromIntent != null) {
             val uri = StoreUpdateNotifications.installUri(context, installAppIdFromIntent)
             if (uri != null) {
-                installUri = uri
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                try {
+                    installUri = withContext(Dispatchers.IO) { createInstallableApkUri(context, uri) }
+                } catch (error: Exception) {
+                    installError = error.message ?: "APK kurulum için hazırlanamadı."
+                }
+                if (installUri != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
                     !context.packageManager.canRequestPackageInstalls()
                 ) {
                     installPermissionLauncher.launch(
@@ -181,8 +185,13 @@ private fun StoreScreen(installAppIdFromIntent: String? = null) {
                         if (validation != null) {
                             installError = validation
                         } else {
-                            installUri = uri
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                            installUri = try {
+                                withContext(Dispatchers.IO) { createInstallableApkUri(context, uri) }
+                            } catch (error: Exception) {
+                                installError = error.message ?: "APK kurulum için hazırlanamadı."
+                                null
+                            }
+                            if (installUri != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
                                 !context.packageManager.canRequestPackageInstalls()
                             ) {
                                 installPermissionLauncher.launch(
@@ -367,24 +376,20 @@ private fun validateDownloadedApk(context: Context, uri: Uri, app: StoreAppListi
 }
 
 private fun launchApkInstaller(context: Context, uri: Uri): String? {
-    val mimeType = "application/vnd.android.package-archive"
-    fun createInstallIntent(action: String): Intent = Intent(action).apply {
-        setDataAndType(uri, mimeType)
-        clipData = android.content.ClipData.newUri(context.contentResolver, "APK", uri)
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    }
-
+    val installIntent = createApkInstallIntent(uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     return try {
-        // Android's dedicated package-install action is preferred on Android 8+.
         try {
-            context.startActivity(createInstallIntent(Intent.ACTION_INSTALL_PACKAGE))
+            context.startActivity(installIntent)
         } catch (_: android.content.ActivityNotFoundException) {
-            // Some OEM installers expose only the generic VIEW handler.
-            context.startActivity(createInstallIntent(Intent.ACTION_VIEW))
+            val fallback = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                clipData = android.content.ClipData.newUri(context.contentResolver, "APK", uri)
+            }
+            context.startActivity(fallback)
         }
         null
     } catch (error: Exception) {
-        "APK indirildi ancak Android kurulum ekranı açılamadı: ${error.message ?: error.javaClass.simpleName}. My App Store için 'Bilinmeyen uygulamaları yükle' iznini kontrol et."
+        "APK indirildi ancak kurulum ekranı açılamadı (${error.javaClass.simpleName}): ${error.message ?: "neden belirtilmedi"}. My App Store için 'Bilinmeyen uygulamaları yükle' iznini kontrol et."
     }
 }
