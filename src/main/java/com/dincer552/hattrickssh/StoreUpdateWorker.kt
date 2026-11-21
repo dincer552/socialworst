@@ -87,7 +87,7 @@ class StoreUpdateWorker(context: Context, params: WorkerParameters) : CoroutineW
                 applicationContext.packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0))
             } else applicationContext.packageManager.getPackageInfo(packageName, 0)
             if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
-        } catch (_: Exception) { null }
+        } catch (_: PackageManager.NameNotFoundException) { null }
     }
 
     private fun cleanupOldPending(prefs: android.content.SharedPreferences, pending: JSONObject) {
