@@ -27,7 +27,7 @@ The repository now contains a central signing service in [signing-service](./sig
 - JKS files and passwords are uploaded once from **My App Store → İMZALAMA**.
 - The service encrypts the key material at rest. The app encrypts its admin token with the Android Keystore.
 - App build workflows use GitHub's short-lived OIDC identity. They do not need JKS files, signing passwords, or signing-related GitHub secrets.
-- Each signing key is bound to one exact GitHub repository and Android package name.
+- Each signing key is bound to an Android package and one or more exact GitHub repositories. My App Store can add a repository from its GitHub URL; the VM stores the registration encrypted, without editing `.env` or restarting the service.
 - The same JKS must be retained for every future update of an installed package.
 
 ### Initial setup
@@ -36,12 +36,12 @@ The repository now contains a central signing service in [signing-service](./sig
 2. Generate `SIGNING_ENCRYPTION_KEY` and `SIGNING_ADMIN_TOKEN` on the VM and configure the service as described in [signing-service/README.md](./signing-service/README.md).
 3. In **My App Store → İMZALAMA**, enter the HTTPS service URL and admin token. Select the existing JKS, use alias `hattrickssh`, package `com.dincer552.hattrickssh`, repository `dincer552/socialworst`, and upload it.
 4. In this repository's Settings → Secrets and variables → Actions → Variables, add `APK_SIGNING_SERVICE_URL` with the service HTTPS URL. This is a URL, not a secret.
-5. The service's `ALLOWED_GITHUB_REPOSITORIES` must include this repository.
+5. No per-repository `APK_SIGNING_SERVICE_URL` variable is required for the Store and DYSSH workflows; both use the shared HTTPS signer URL. The initial Store repository remains in the bootstrap allowlist, and additional repositories are registered dynamically from the app.
 
 If the currently installed Store version does not yet contain the İMZALAMA screen, install the debug APK artifact from the Actions run for this commit as a separate bootstrap app, or provision the initial key using the service API. The debug build has the `.debug` package suffix and does not replace the production app.
 
 ### Add another app key
 
-In the same İMZALAMA screen, set a unique key ID, exact Android package name, and exact GitHub repository (owner/repo), then select that app's existing JKS. Add the repository to the service allowlist and add the same `APK_SIGNING_SERVICE_URL` Actions variable to that repository. Its workflow must build an unsigned release APK, request a GitHub OIDC token with `id-token: write`, and POST the APK to `/v1/sign` with the registered key ID. See the DYSSH integration example in the signing-service guide.
+In the same İMZALAMA screen, paste the GitHub repository URL. If its key profile is already registered on the VM, My App Store links the repository with one button. For a first-time app, select that app's existing JKS once, then enter its package name, alias and password; the VM registers the repository and encrypts the key in the same operation. Its GitHub Actions workflow must still build an unsigned release APK, request a short-lived OIDC token with `id-token: write`, and POST the APK to `/v1/sign` with the registered key ID. The existing DYSSH workflow is an integration example. See the signing-service guide.
 
 **Important:** Never upload a replacement JKS for an already published app unless you intentionally plan a new Android package identity. Losing the old key prevents normal in-place updates.
