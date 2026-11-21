@@ -135,7 +135,8 @@ def read_key(key_id: str) -> dict:
         raise HTTPException(status_code=500, detail="signing_key_store_unreadable") from exc
 
 
-def verify_github_oidc(token: str) -> dict:
+def decode_github_oidc(token: str) -> dict:
+    """Validate a GitHub Actions identity without applying the repository allowlist yet."""
     global _jwks
     if not token:
         raise HTTPException(status_code=401, detail="missing_github_oidc_token")
@@ -155,14 +156,20 @@ def verify_github_oidc(token: str) -> dict:
         raise HTTPException(status_code=401, detail="invalid_github_oidc_token") from exc
 
     repository = claims.get("repository", "")
-    if repository not in allowed_repositories():
-        raise HTTPException(status_code=403, detail="repository_not_allowed")
+    if not isinstance(repository, str) or not repository:
+        raise HTTPException(status_code=401, detail="github_repository_claim_missing")
     if claims.get("ref") != "refs/heads/main":
         raise HTTPException(status_code=403, detail="only_main_branch_can_sign")
     if claims.get("event_name") not in ("push", "workflow_dispatch"):
         raise HTTPException(status_code=403, detail="workflow_event_not_allowed")
     return claims
 
+
+def verify_github_oidc(token: str) -> dict:
+    claims = decode_github_oidc(token)
+    if claims.get("repository") not in allowed_repositories():
+        raise HTTPException(status_code=403, detail="repository_not_allowed")
+    return claims
 
 def run_checked(command: list[str], *, env: dict[str, str] | None = None, timeout: int = 90) -> str:
     try:
@@ -189,6 +196,52 @@ def apk_identity(apk_path: Path) -> tuple[str, str]:
 @APP.get("/health")
 def health():
     return {"ok": True, "service": "my-app-store-apk-signer", "oidc": True}
+
+
+@APP.post("/v1/bootstrap")
+def bootstrap_signing_profile(
+    key_id: str = Form(...),
+    package_name: str = Form(...),
+    authorization: str | None = Header(default=None),
+):
+    """Allow a repo's own verified main-branch workflow to create its first, isolated key."""
+    token = authorization.removeprefix("Bearer ").strip() if authorization else ""
+    claims = decode_github_oidc(token)
+    safe_key_id(key_id)
+    if not PACKAGE_RE.fullmatch(package_name):
+        raise HTTPException(status_code=400, detail="invalid_package_name")
+
+    repository = normalize_repository(claims["repository"])
+    try:
+        config = read_key(key_id)
+    except HTTPException as exc:
+        if exc.status_code != 404:
+            raise
+        config = generate_signing_profile(key_id, repository, package_name)
+        save_key(key_id, config)
+        save_allowed_repositories(allowed_repositories() | {repository})
+        return {
+            "ok": True,
+            "created": True,
+            "key_id": key_id,
+            "repository": repository,
+            "package_name": package_name,
+        }
+
+    # Self-service bootstrap may only confirm the repository's own existing profile.
+    # It cannot attach another repository to an existing app or reuse another app's key.
+    if config.get("package_name") != package_name:
+        raise HTTPException(status_code=409, detail="signing_profile_package_mismatch")
+    if repository not in key_repositories(config):
+        raise HTTPException(status_code=403, detail="repository_requires_admin_binding")
+    save_allowed_repositories(allowed_repositories() | {repository})
+    return {
+        "ok": True,
+        "created": False,
+        "key_id": key_id,
+        "repository": repository,
+        "package_name": package_name,
+    }
 
 
 @APP.put("/v1/admin/keys/{key_id}")
@@ -244,14 +297,14 @@ async def provision_key(
 
 
 
-def generate_signing_profile(key_id: str, repository: str) -> dict:
+def generate_signing_profile(key_id: str, repository: str, package_name: str | None = None) -> dict:
     """Create a dedicated Android signing identity for a new repository."""
     owner, repo_name = repository.split("/", 1)
     owner_part = re.sub(r"[^A-Za-z0-9_]", "_", owner)
     repo_part = re.sub(r"[^A-Za-z0-9_]", "", repo_name)
     if not repo_part or not repo_part[0].isalpha():
         repo_part = "app" + repo_part
-    package_name = f"com.{owner_part.lower()}.{repo_part.lower()}"
+    package_name = package_name or f"com.{owner_part.lower()}.{repo_part.lower()}"
     if not PACKAGE_RE.fullmatch(package_name):
         raise HTTPException(status_code=400, detail="could_not_derive_android_package_name")
 
