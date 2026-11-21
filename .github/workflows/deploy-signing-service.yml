@@ -25,6 +25,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate signer Python syntax
+        run: python3 -m py_compile signing-service/main.py
+
       - name: Validate deployment credentials
         shell: bash
         run: |
@@ -56,4 +59,4 @@ jobs:
             -o ConnectTimeout=20 \
             -o ProxyCommand="$RUNNER_TEMP/cloudflared access ssh --hostname %h" \
             azureuser@ssh.dinceryuksek.com \
-            'sudo test -d /opt/apk-signing/signing-service && sudo tee /tmp/apk-signing-main.py >/dev/null && sudo install -o root -g root -m 0644 /tmp/apk-signing-main.py /opt/apk-signing/signing-service/main.py && sudo rm -f /tmp/apk-signing-main.py && sudo systemctl restart apk-signing && sleep 2 && curl --fail --silent --show-error http://127.0.0.1:8787/health'
+            'sudo test -d /opt/apk-signing/signing-service && sudo tee /tmp/apk-signing-main.py >/dev/null && sudo install -o root -g root -m 0644 /tmp/apk-signing-main.py /opt/apk-signing/signing-service/main.py && sudo rm -f /tmp/apk-signing-main.py && sudo systemctl restart apk-signing && sleep 2 && (curl --fail --silent --show-error http://127.0.0.1:8787/health || { sudo systemctl status --no-pager -l apk-signing || true; sudo journalctl -u apk-signing -n 60 --no-pager || true; exit 1; })'
