@@ -10,6 +10,7 @@ import secrets
 import subprocess
 import tempfile
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import jwt
 from cryptography.fernet import Fernet, InvalidToken
@@ -19,6 +20,7 @@ from fastapi.responses import Response
 APP = FastAPI(title="My App Store APK Signer", docs_url=None, redoc_url=None)
 DATA_DIR = Path(os.environ.get("SIGNING_DATA_DIR", "/var/lib/apk-signing"))
 KEY_DIR = DATA_DIR / "keys"
+REPOSITORY_FILE = DATA_DIR / "repositories.enc"
 MAX_APK_BYTES = 150 * 1024 * 1024
 KEY_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,63}$")
 PACKAGE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$")
@@ -32,6 +34,60 @@ APKSIGNER = os.environ.get("APKSIGNER_PATH", "/opt/android-sdk/build-tools/36.0.
 AAPT = os.environ.get("AAPT_PATH", "/opt/android-sdk/build-tools/36.0.0/aapt")
 ZIPALIGN = os.environ.get("ZIPALIGN_PATH", "/opt/android-sdk/build-tools/36.0.0/zipalign")
 _jwks = None
+
+
+def normalize_repository(value: str) -> str:
+    raw = (value or "").strip()
+    if raw.startswith(("https://", "http://")):
+        parsed = urlsplit(raw)
+        if parsed.scheme != "https" or parsed.netloc.lower() != "github.com" or parsed.query or parsed.fragment:
+            raise HTTPException(status_code=400, detail="invalid_github_repository_url")
+        parts = parsed.path.strip("/").split("/")
+        if len(parts) != 2:
+            raise HTTPException(status_code=400, detail="repository_url_must_point_to_repository")
+        owner, name = parts
+        if name.endswith(".git"):
+            name = name[:-4]
+    else:
+        parts = raw.split("/")
+        if len(parts) != 2:
+            raise HTTPException(status_code=400, detail="repository_must_be_owner_slash_name")
+        owner, name = parts
+    if (not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})?", owner)
+            or not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", name)
+            or name in (".", "..") or name.endswith(".")):
+        raise HTTPException(status_code=400, detail="invalid_github_repository")
+    return f"{owner}/{name}"
+
+
+def allowed_repositories() -> set[str]:
+    repositories = set(ALLOWED_REPOSITORIES)
+    if REPOSITORY_FILE.is_file():
+        try:
+            stored = json.loads(get_cipher().decrypt(REPOSITORY_FILE.read_bytes()))
+            if isinstance(stored, list):
+                repositories.update(item for item in stored if isinstance(item, str))
+        except (InvalidToken, ValueError, OSError) as exc:
+            raise HTTPException(status_code=500, detail="repository_registry_unreadable") from exc
+    return repositories
+
+
+def save_allowed_repositories(repositories: set[str]) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    encrypted = get_cipher().encrypt(json.dumps(sorted(repositories), separators=(",", ":")).encode())
+    temporary = REPOSITORY_FILE.with_suffix(".tmp")
+    temporary.write_bytes(encrypted)
+    os.chmod(temporary, 0o600)
+    os.replace(temporary, REPOSITORY_FILE)
+    os.chmod(REPOSITORY_FILE, 0o600)
+
+
+def key_repositories(config: dict) -> set[str]:
+    values = config.get("repositories")
+    if isinstance(values, list):
+        return {item for item in values if isinstance(item, str)}
+    legacy = config.get("repository")
+    return {legacy} if isinstance(legacy, str) and legacy else set()
 
 
 def get_cipher() -> Fernet:
@@ -98,7 +154,7 @@ def verify_github_oidc(token: str) -> dict:
         raise HTTPException(status_code=401, detail="invalid_github_oidc_token") from exc
 
     repository = claims.get("repository", "")
-    if not ALLOWED_REPOSITORIES or repository not in ALLOWED_REPOSITORIES:
+    if repository not in allowed_repositories():
         raise HTTPException(status_code=403, detail="repository_not_allowed")
     if claims.get("ref") != "refs/heads/main":
         raise HTTPException(status_code=403, detail="only_main_branch_can_sign")
@@ -148,8 +204,7 @@ async def provision_key(
     safe_key_id(key_id)
     if not PACKAGE_RE.fullmatch(package_name):
         raise HTTPException(status_code=400, detail="invalid_package_name")
-    if repository not in ALLOWED_REPOSITORIES:
-        raise HTTPException(status_code=403, detail="repository_not_allowed")
+    repository = normalize_repository(repository)
     if not key_alias.strip() or len(key_alias) > 128 or not key_password or len(key_password) > 512:
         raise HTTPException(status_code=400, detail="invalid_key_metadata")
     raw = await keystore.read(MAX_APK_BYTES + 1)
@@ -158,12 +213,44 @@ async def provision_key(
     payload = {
         "package_name": package_name,
         "repository": repository,
+        "repositories": [repository],
         "key_alias": key_alias.strip(),
         "key_password": key_password,
         "keystore_b64": base64.b64encode(raw).decode("ascii"),
     }
     save_key(key_id, payload)
-    return {"ok": True, "key_id": key_id, "package_name": package_name}
+    save_allowed_repositories(allowed_repositories() | {repository})
+    return {"ok": True, "key_id": key_id, "package_name": package_name, "repository": repository}
+
+
+
+@APP.post("/v1/admin/repositories")
+def register_repository(
+    repository: str = Form(...),
+    key_id: str = Form(...),
+    authorization: str | None = Header(default=None),
+):
+    """Attach a GitHub repository URL to an already provisioned package key."""
+    require_admin(authorization)
+    safe_key_id(key_id)
+    repository = normalize_repository(repository)
+    config = read_key(key_id)
+    repositories = key_repositories(config)
+    if not repositories:
+        raise HTTPException(status_code=409, detail="signing_key_has_no_repository_binding")
+    repositories.add(repository)
+    config["repositories"] = sorted(repositories)
+    # Keep the original field for compatibility with older service deployments.
+    config["repository"] = sorted(repositories)[0]
+    save_key(key_id, config)
+    save_allowed_repositories(allowed_repositories() | {repository})
+    return {
+        "ok": True,
+        "key_id": key_id,
+        "package_name": config["package_name"],
+        "repository": repository,
+        "repositories": sorted(repositories),
+    }
 
 
 @APP.post("/v1/sign")
@@ -175,7 +262,7 @@ async def sign_apk(
     token = authorization.removeprefix("Bearer ").strip() if authorization else ""
     claims = verify_github_oidc(token)
     config = read_key(key_id)
-    if claims.get("repository") != config.get("repository"):
+    if claims.get("repository") not in key_repositories(config):
         raise HTTPException(status_code=403, detail="repository_not_authorized_for_key")
     raw = await apk.read(MAX_APK_BYTES + 1)
     if not raw or len(raw) > MAX_APK_BYTES:
