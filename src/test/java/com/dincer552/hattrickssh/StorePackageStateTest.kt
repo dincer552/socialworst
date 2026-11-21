@@ -20,7 +20,11 @@ class StorePackageStateTest {
         assertEquals(StorePackageState.UP_TO_DATE, resolveStorePackageState(13L, 12L))
     }
 
-    @Test fun missingReleaseDoesNotMarkInstalledPackageAsUpdate() {
-        assertEquals(StorePackageState.UP_TO_DATE, resolveStorePackageState(12L, null))
+    @Test fun installedPackageWithoutReleaseIsStillReportedAsInstalled() {
+        assertEquals(StorePackageState.INSTALLED, resolveStorePackageState(12L, null))
+    }
+
+    @Test fun missingPackageWithoutReleaseIsNotInstalled() {
+        assertEquals(StorePackageState.NOT_INSTALLED, resolveStorePackageState(null, null))
     }
 }
