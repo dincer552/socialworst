@@ -1,12 +1,14 @@
 # Merkezi Android APK imzalayıcı
 
-My App Store, JKS dosyasını ve parolasını bu servise bir kez gönderir. Servis bunları Fernet ile şifreleyerek diskte saklar. Projelerin GitHub Actions iş akışları, uzun ömürlü GitHub secret kullanmadan GitHub OIDC kimliğiyle imza isteği yapar.
+My App Store, JKS dosyasını ve parolasını bu servise bir kez gönderir. Servis bunları Fernet ile şifreleyerek diskte saklar. My App Store'a GitHub repo bağlantısı verildiğinde servis, ilgili repoyu aynı anahtar profiline dinamik olarak bağlar. Projelerin GitHub Actions iş akışları, uzun ömürlü GitHub secret kullanmadan GitHub OIDC kimliğiyle imza isteği yapar.
 
 ## Güvenlik modeli
 
 - JKS dosyası veya parolası hiçbir uygulama deposuna ya da APK'ya eklenmez.
 - Anahtar dosyası ve parola, `SIGNING_ENCRYPTION_KEY` ile şifrelenerek tek bir `.enc` dosyasında saklanır.
-- Yalnızca izin verilen GitHub depoları, `main` dalındaki `push` ve `workflow_dispatch` çalıştırmaları imza isteyebilir.
+- Yalnızca VM'deki şifreli repo kayıt listesine veya başlangıç `.env` izin listesine eklenmiş depolar, `main` dalındaki `push` ve `workflow_dispatch` çalıştırmaları imza isteyebilir.
+- Repo kayıtları `/var/lib/apk-signing/repositories.enc` içinde Fernet ile şifreli saklanır; yeni repo eklemek için `.env` düzenlemek veya servisi yeniden başlatmak gerekmez.
+- Bir anahtar profiline birden fazla repo bağlanabilir; her repo yine tam OIDC `repository` claim'iyle doğrulanır.
 - GitHub OIDC token'ı imza servisi tarafından GitHub'ın JWKS anahtarlarıyla ve özel audience ile doğrulanır.
 - APK paket adı, seçilen anahtarın kayıtlı paket adıyla eşleşmelidir.
 - `apksigner verify` başarılı olmadan imzalı APK döndürülmez.
@@ -74,10 +76,11 @@ Diğer uygulamalar için her uygulama/Android package için ayrı key ID ve JKS 
 
 Her imza isteyen repoda Actions variable `APK_SIGNING_SERVICE_URL` değerini servisin HTTPS adresi olarak tanımlayın. Secret veya JKS eklemeyin. Workflow için `id-token: write` izni verin. `main` üzerindeki build job, GitHub'ın kısa ömürlü OIDC token'ını alıp imzasız APK'yı `POST /v1/sign` ile gönderir. Bu depodaki `.github/workflows/build-apk.yml` örnek uygulamadır.
 
-Servisteki `ALLOWED_GITHUB_REPOSITORIES` listesinde ilgili `owner/repo` bulunmalıdır. Workflow yalnızca `refs/heads/main`, `push` veya `workflow_dispatch` koşullarında imzalanır.
+Repo ilk kez bir JKS ile kaydedildiğinde servis onu izin listesine otomatik ekler. Sonraki bağlantılarda `POST /v1/admin/repositories` endpoint'i mevcut anahtar profiline repo ekler. Workflow yalnızca `refs/heads/main`, `push` veya `workflow_dispatch` koşullarında imzalanır. Repo bağlantısının tek başına APK derlemediğini unutmayın: hedef depoda imzasız APK üreten ve OIDC token ile `/v1/sign` çağıran bir GitHub Actions workflow'u bulunmalıdır.
 
 ## İstek sözleşmesi
 
 - `PUT /v1/admin/keys/{key_id}`: Bearer admin token + multipart `keystore`, `package_name`, `repository`, `key_alias`, `key_password`.
+- `POST /v1/admin/repositories`: Bearer admin token + multipart `repository` (GitHub repo URL veya `owner/repo`) ve `key_id`; mevcut anahtar profiline repo ekler.
 - `POST /v1/sign`: Bearer GitHub OIDC token + multipart `key_id`, `apk`.
 - `GET /health`: servis sağlık kontrolü.
