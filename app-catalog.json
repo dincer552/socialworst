@@ -25,5 +25,14 @@
     "packageName": "com.dincer552.instaviewer",
     "repository": "dincer552/instaviewer",
     "assetName": "instaviewer.apk"
+  },
+  {
+    "id": "test-apk",
+    "name": "Test APK",
+    "description": "My App Store otomatik imzalama test uygulaması",
+    "icon": "🧪",
+    "packageName": "com.dincer552.testapk",
+    "repository": "dincer552/test-apk",
+    "assetName": "test-apk.apk"
   }
 ]
