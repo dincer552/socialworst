@@ -37,7 +37,6 @@ fun createInstallableApkUri(context: Context, source: Uri): Uri {
 fun createApkInstallIntent(uri: Uri): Intent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
     setDataAndType(uri, "application/vnd.android.package-archive")
     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    clipData = android.content.ClipData.newUri(null, "APK", uri)
 }
 
 /** Parses the APK archive from a real local file and verifies its exact identity. */
