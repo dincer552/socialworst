@@ -27,4 +27,17 @@ class StorePackageStateTest {
     @Test fun missingPackageWithoutReleaseIsNotInstalled() {
         assertEquals(StorePackageState.NOT_INSTALLED, resolveStorePackageState(null, null))
     }
+
+    @Test fun existingPackageOnAndroid12OrNewerUsesPackageInstallerUpdateFlow() {
+        assertEquals(true, shouldAttemptPackageInstallerUpdate(31, true))
+        assertEquals(true, shouldAttemptPackageInstallerUpdate(34, true))
+    }
+
+    @Test fun newInstallUsesRegularInstallerInsteadOfSilentUpdateFlow() {
+        assertEquals(false, shouldAttemptPackageInstallerUpdate(34, false))
+    }
+
+    @Test fun android11UsesRegularInstallerForUpdates() {
+        assertEquals(false, shouldAttemptPackageInstallerUpdate(30, true))
+    }
 }
