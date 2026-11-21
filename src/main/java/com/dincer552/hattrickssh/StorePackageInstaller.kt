@@ -30,6 +30,21 @@ internal fun supportsNoUserActionUpdateTarget(platformApi: Int, installedTargetS
     return installedTargetSdk >= minimum
 }
 
+@Suppress("DEPRECATION")
+private fun installedTargetSdk(context: Context, packageName: String): Int = try {
+    val info = if (Build.VERSION.SDK_INT >= 33) {
+        context.packageManager.getPackageInfo(
+            packageName,
+            android.content.pm.PackageManager.PackageInfoFlags.of(0)
+        )
+    } else {
+        context.packageManager.getPackageInfo(packageName, 0)
+    }
+    info.applicationInfo?.targetSdkVersion ?: 0
+} catch (_: Exception) {
+    0
+}
+
 /**
  * Updates an installed package through PackageInstaller when the Android version
  * and the installed app's target SDK allow the API. The OS decides whether the
@@ -41,25 +56,7 @@ fun launchStoreInstallOrUpdate(context: Context, apkUri: Uri, packageName: Strin
         return launchApkInstaller(context, apkUri)
     }
 
-    val installedTargetSdk = try {
-        val flags = if (Build.VERSION.SDK_INT >= 33) {
-            android.content.pm.PackageManager.PackageInfoFlags.of(0)
-        } else {
-            @Suppress("DEPRECATION")
-            0
-        }
-        @Suppress("DEPRECATION")
-        val packageInfo = if (Build.VERSION.SDK_INT >= 33) {
-            context.packageManager.getPackageInfo(packageName, flags as android.content.pm.PackageManager.PackageInfoFlags)
-        } else {
-            context.packageManager.getPackageInfo(packageName, flags as Int)
-        }
-        packageInfo.applicationInfo?.targetSdkVersion ?: 0
-    } catch (_: android.content.pm.PackageManager.NameNotFoundException) {
-        0
-    } catch (_: Exception) {
-        0
-    }
+    val installedTargetSdk = installedTargetSdk(context, packageName)
 
     if (!supportsNoUserActionUpdateTarget(Build.VERSION.SDK_INT, installedTargetSdk)) {
         return launchApkInstaller(context, apkUri)
