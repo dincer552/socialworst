@@ -53,17 +53,25 @@ private val StoreGreen = Color(0xFF38D98A)
 private val StoreMuted = Color(0xFF91A1B2)
 
 class StoreActivity : ComponentActivity() {
+    private val installRequestState = mutableStateOf<Pair<String, Int>?>(null)
+    private val resumeRevision = mutableIntStateOf(0)
+    private var installRequestSequence = 0
+
+    private fun captureInstallRequest(source: Intent?) {
+        val appId = source?.getStringExtra("install_app_id")
+        if (!appId.isNullOrBlank()) {
+            installRequestSequence += 1
+            installRequestState.value = appId to installRequestSequence
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = android.graphics.Color.rgb(8, 13, 18)
         window.navigationBarColor = android.graphics.Color.BLACK
-        
-        // Start periodic background update checks
         StoreUpdateWorker.enqueuePeriodicCheck(this)
-        
-        // Get install_app_id from intent if present
-        val installAppIdFromIntent = intent?.getStringExtra("install_app_id")
-        
+        captureInstallRequest(intent)
+
         setContent {
             MaterialTheme(colorScheme = darkColorScheme(
                 primary = StoreGreen,
@@ -71,14 +79,31 @@ class StoreActivity : ComponentActivity() {
                 surface = StorePanel,
                 onSurface = Color.White
             )) {
-                StoreScreen(installAppIdFromIntent = installAppIdFromIntent)
+                StoreScreen(
+                    installRequest = installRequestState.value,
+                    statusRefreshKey = resumeRevision.intValue
+                )
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        captureInstallRequest(intent)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        resumeRevision.intValue += 1
     }
 }
 
 @Composable
-private fun StoreScreen(installAppIdFromIntent: String? = null) {
+private fun StoreScreen(
+    installRequest: Pair<String, Int>? = null,
+    statusRefreshKey: Int = 0
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var apps by remember { mutableStateOf<List<StoreAppListing>>(emptyList()) }
@@ -123,27 +148,32 @@ private fun StoreScreen(installAppIdFromIntent: String? = null) {
     }
 
     // Check for ready downloads from background worker notifications
-    LaunchedEffect(Unit) {
+    LaunchedEffect(installRequest) {
         refreshCatalog()
+        val installAppIdFromIntent = installRequest?.first
         if (installAppIdFromIntent != null) {
             val uri = StoreUpdateNotifications.installUri(context, installAppIdFromIntent)
             if (uri != null) {
-                installUri = uri
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                try {
+                    installUri = withContext(Dispatchers.IO) { createInstallableApkUri(context, uri) }
+                    StoreUpdateNotifications.removeReady(context, installAppIdFromIntent)
+                } catch (error: Exception) {
+                    installError = error.message ?: "APK kurulum için hazırlanamadı."
+                }
+                if (installUri != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
                     !context.packageManager.canRequestPackageInstalls()
                 ) {
                     installPermissionLauncher.launch(
                         Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
                     )
                 } else {
-                    launchApkInstaller(context, uri)?.let { installError = it }
+                    installUri?.let { stagedUri ->
+                        launchApkInstaller(context, stagedUri)?.let { installError = it }
+                    }
                 }
             }
         }
     }
-
-    // Also refresh when app comes to foreground
-    LaunchedEffect(apps) { }
 
     LaunchedEffect(downloadId) {
         val id = downloadId ?: return@LaunchedEffect
@@ -181,15 +211,22 @@ private fun StoreScreen(installAppIdFromIntent: String? = null) {
                         if (validation != null) {
                             installError = validation
                         } else {
-                            installUri = uri
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                            installUri = try {
+                                withContext(Dispatchers.IO) { createInstallableApkUri(context, uri) }
+                            } catch (error: Exception) {
+                                installError = error.message ?: "APK kurulum için hazırlanamadı."
+                                null
+                            }
+                            if (installUri != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
                                 !context.packageManager.canRequestPackageInstalls()
                             ) {
                                 installPermissionLauncher.launch(
                                     Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
                                 )
                             } else {
-                                launchApkInstaller(context, uri)?.let { installError = it }
+                                installUri?.let { stagedUri ->
+                                    launchApkInstaller(context, stagedUri)?.let { installError = it }
+                                }
                             }
                         }
                     }
@@ -252,7 +289,7 @@ private fun StoreScreen(installAppIdFromIntent: String? = null) {
                         app = app,
                         context = context,
                         busy = downloadId != null,
-                        refreshKey = catalogRevision,
+                        refreshKey = "$catalogRevision:$statusRefreshKey",
                         onInstall = {
                             installError = null
                             downloadingApp = app
@@ -282,16 +319,17 @@ private fun StoreAppCard(
     app: StoreAppListing,
     context: Context,
     busy: Boolean,
-    refreshKey: Int,
+    refreshKey: String,
     onInstall: () -> Unit
 ) {
     val installedCode = remember(app.packageName, refreshKey) { getInstalledVersionCode(context, app.packageName) }
     val release = app.release
-    val status = when {
-        release == null -> "Henüz GitHub Release yayınlanmamış"
-        installedCode == null -> "Yüklenmedi"
-        installedCode < release.versionCode -> "Güncelleme mevcut"
-        else -> "Yüklü • Güncel"
+    val packageState = resolveStorePackageState(installedCode, release?.versionCode?.toLong())
+    val status = when (packageState) {
+        StorePackageState.NOT_INSTALLED -> if (release == null) "Kurulu değil • Release bekleniyor" else "Yüklenmedi"
+        StorePackageState.INSTALLED -> "Kurulu • Sürüm bilgisi yok"
+        StorePackageState.UPDATE_AVAILABLE -> "Güncelleme mevcut"
+        StorePackageState.UP_TO_DATE -> "Yüklü • Güncel"
     }
     Card(
         colors = CardDefaults.cardColors(containerColor = StorePanel),
@@ -308,20 +346,25 @@ private fun StoreAppCard(
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(release?.versionName ?: "Sürüm bekleniyor", color = StoreMuted, fontSize = 10.sp)
-                Text(status, color = if (release == null) StoreMuted else StoreGreen, fontSize = 10.sp)
+                Text(
+                    status,
+                    color = if (packageState == StorePackageState.UPDATE_AVAILABLE || packageState == StorePackageState.UP_TO_DATE) StoreGreen else StoreMuted,
+                    fontSize = 10.sp
+                )
             }
             if (release != null) {
                 Button(
                     onClick = onInstall,
-                    enabled = !busy && (installedCode == null || installedCode < release.versionCode),
+                    enabled = !busy && packageState != StorePackageState.UP_TO_DATE,
                     modifier = Modifier.fillMaxWidth().height(42.dp),
                     shape = RoundedCornerShape(10.dp)
                 ) {
                     Text(
-                        when {
-                            installedCode == null -> "APK İNDİR VE KUR"
-                            installedCode < release.versionCode -> "GÜNCELLE • ${release.versionName}"
-                            else -> "ZATEN GÜNCEL"
+                        when (packageState) {
+                            StorePackageState.NOT_INSTALLED -> "APK İNDİR VE KUR"
+                            StorePackageState.INSTALLED -> "KURULU"
+                            StorePackageState.UPDATE_AVAILABLE -> "GÜNCELLE • ${release.versionName}"
+                            StorePackageState.UP_TO_DATE -> "ZATEN GÜNCEL"
                         },
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
@@ -341,11 +384,15 @@ private fun getInstalledVersionCode(context: Context, packageName: String): Long
         context.packageManager.getPackageInfo(packageName, 0)
     }
     if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
-} catch (_: Exception) {
+} catch (_: android.content.pm.PackageManager.NameNotFoundException) {
     null
 }
 
 private fun validateDownloadedApk(context: Context, uri: Uri, app: StoreAppListing): String? {
+    val expectedVersion = app.release?.versionCode?.toLong()
+        ?: return "Katalogda beklenen APK sürümü bulunamadı."
+    val identityError = validateApkIdentity(context, uri, app.packageName, expectedVersion)
+    if (identityError != null) return identityError
     val expected = app.release?.sha256
     if (expected.isNullOrBlank()) return null
     return try {
@@ -367,24 +414,20 @@ private fun validateDownloadedApk(context: Context, uri: Uri, app: StoreAppListi
 }
 
 private fun launchApkInstaller(context: Context, uri: Uri): String? {
-    val mimeType = "application/vnd.android.package-archive"
-    fun createInstallIntent(action: String): Intent = Intent(action).apply {
-        setDataAndType(uri, mimeType)
-        clipData = android.content.ClipData.newUri(context.contentResolver, "APK", uri)
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    }
-
+    val installIntent = createApkInstallIntent(uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     return try {
-        // Android's dedicated package-install action is preferred on Android 8+.
         try {
-            context.startActivity(createInstallIntent(Intent.ACTION_INSTALL_PACKAGE))
+            context.startActivity(installIntent)
         } catch (_: android.content.ActivityNotFoundException) {
-            // Some OEM installers expose only the generic VIEW handler.
-            context.startActivity(createInstallIntent(Intent.ACTION_VIEW))
+            val fallback = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                clipData = android.content.ClipData.newUri(context.contentResolver, "APK", uri)
+            }
+            context.startActivity(fallback)
         }
         null
     } catch (error: Exception) {
-        "APK indirildi ancak Android kurulum ekranı açılamadı: ${error.message ?: error.javaClass.simpleName}. My App Store için 'Bilinmeyen uygulamaları yükle' iznini kontrol et."
+        "APK indirildi ancak kurulum ekranı açılamadı (${error.javaClass.simpleName}): ${error.message ?: "neden belirtilmedi"}. My App Store için 'Bilinmeyen uygulamaları yükle' iznini kontrol et."
     }
 }
