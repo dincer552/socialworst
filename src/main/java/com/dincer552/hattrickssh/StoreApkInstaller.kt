@@ -16,7 +16,7 @@ fun createInstallableApkUri(context: Context, source: Uri): Uri {
     if (!directory.exists() && !directory.mkdirs()) {
         throw IOException("APK önbellek klasörü oluşturulamadı.")
     }
-    val target = File(directory, "install-${System.currentTimeMillis()}.apk")
+    val target = File.createTempFile("install-", ".apk", directory)
     try {
         val input = context.contentResolver.openInputStream(source)
             ?: throw IOException("İndirilen APK okunamadı.")
@@ -37,13 +37,14 @@ fun createInstallableApkUri(context: Context, source: Uri): Uri {
 fun createApkInstallIntent(uri: Uri): Intent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
     setDataAndType(uri, "application/vnd.android.package-archive")
     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    clipData = android.content.ClipData.newRawUri("APK", uri)
 }
 
 /** Parses the APK archive from a real local file and verifies its exact identity. */
 fun validateApkIdentity(context: Context, source: Uri, expectedPackage: String, expectedVersionCode: Long): String? {
     val directory = File(context.cacheDir, "store-apks")
     if (!directory.exists() && !directory.mkdirs()) return "APK doğrulama klasörü oluşturulamadı."
-    val temporary = File(directory, "verify-${System.currentTimeMillis()}.apk")
+    val temporary = File.createTempFile("verify-", ".apk", directory)
     return try {
         val input = context.contentResolver.openInputStream(source)
             ?: return "İndirilen APK okunamadı."
