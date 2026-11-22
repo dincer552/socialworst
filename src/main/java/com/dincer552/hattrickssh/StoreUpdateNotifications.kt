@@ -36,6 +36,19 @@ object StoreUpdateNotifications {
 
     fun isReady(context: Context, appId: String): Boolean = installUri(context, appId) != null
 
+    fun readyVersionCode(context: Context, appId: String): Long? {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val ready = JSONObject(prefs.getString(READY, "{}") ?: "{}")
+        val item = ready.optJSONObject(appId) ?: return null
+        return if (item.has("versionCode")) item.optLong("versionCode") else null
+    }
+
+    /** True when a validated APK for this appId and exact versionCode is already staged. */
+    fun hasReadyVersion(context: Context, appId: String, versionCode: Long): Boolean {
+        val ready = readyVersionCode(context, appId) ?: return false
+        return ready == versionCode && installUri(context, appId) != null
+    }
+
     fun installPackageName(context: Context, appId: String): String? {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val ready = JSONObject(prefs.getString(READY, "{}") ?: "{}")
@@ -82,7 +95,11 @@ class StoreDownloadCompletedReceiver : BroadcastReceiver() {
         while (keys.hasNext()) {
             val key = keys.next()
             val candidate = pending.optJSONObject(key) ?: continue
-            if (candidate.optLong("downloadId") == id) { matchedKey = key; item = candidate; break }
+            if (candidate.optLong("downloadId") == id) {
+                matchedKey = key
+                item = candidate
+                break
+            }
         }
         val metadata = item ?: return
         val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
@@ -111,13 +128,16 @@ class StoreDownloadCompletedReceiver : BroadcastReceiver() {
             StoreUpdateNotifications.removePendingDownload(context, id)
             return
         }
-        // The archive identity and optional SHA-256 are checked before publishing it as installable.
         val expectedSha = metadata.optString("sha256")
         if (expectedSha.isNotBlank()) {
             val digest = MessageDigest.getInstance("SHA-256")
             context.contentResolver.openInputStream(uri)?.use { input ->
                 val buffer = ByteArray(16 * 1024)
-                while (true) { val count = input.read(buffer); if (count < 0) break; digest.update(buffer, 0, count) }
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    digest.update(buffer, 0, count)
+                }
             } ?: run {
                 StoreUpdateNotifications.removePendingDownload(context, id)
                 return
@@ -131,15 +151,29 @@ class StoreDownloadCompletedReceiver : BroadcastReceiver() {
         val ready = JSONObject(prefs.getString(StoreUpdateNotifications.READY, "{}") ?: "{}")
         ready.put(metadata.optString("appId"), JSONObject(metadata.toString()).put("uri", uri.toString()))
         pending.remove(matchedKey)
-        prefs.edit().putString(StoreUpdateNotifications.PENDING, pending.toString()).putString(StoreUpdateNotifications.READY, ready.toString()).apply()
+        prefs.edit()
+            .putString(StoreUpdateNotifications.PENDING, pending.toString())
+            .putString(StoreUpdateNotifications.READY, ready.toString())
+            .apply()
         StoreUpdateNotifications.ensureChannel(context)
         val open = Intent(context, StoreActivity::class.java).putExtra("install_app_id", metadata.optString("appId"))
-        val pi = PendingIntent.getActivity(context, id.toInt(), open, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val pi = PendingIntent.getActivity(
+            context,
+            id.toInt(),
+            open,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
         val notification = NotificationCompat.Builder(context, StoreUpdateNotifications.CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
             .setContentTitle("${metadata.optString("name")} güncellemesi hazır")
             .setContentText("${metadata.optString("versionName")} sürümünü yüklemek için dokun")
-            .setContentIntent(pi).setAutoCancel(true).setPriority(NotificationCompat.PRIORITY_DEFAULT).build()
-        try { NotificationManagerCompat.from(context).notify(id.toInt(), notification) } catch (_: SecurityException) { }
+            .setContentIntent(pi)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .build()
+        try {
+            NotificationManagerCompat.from(context).notify(id.toInt(), notification)
+        } catch (_: SecurityException) {
+        }
     }
 }
