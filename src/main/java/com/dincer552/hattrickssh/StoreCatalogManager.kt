@@ -15,7 +15,8 @@ data class StoreAppListing(
     val icon: String,
     val packageName: String,
     val repository: String,
-    val release: StoreRelease?
+    val release: StoreRelease?,
+    val updateHistory: List<StoreReleaseHistory> = emptyList()
 ) {
     val downloadUrl: String get() = release?.downloadUrl.orEmpty()
     val versionCode: Int get() = release?.versionCode ?: 0
@@ -28,6 +29,8 @@ data class StoreRelease(
     val downloadUrl: String,
     val sha256: String?
 )
+
+data class StoreReleaseHistory(val versionName: String, val publishedAt: String, val notes: String)
 
 object StoreCatalogManager {
     private const val CATALOG_URL = "https://raw.githubusercontent.com/dincer552/socialworst/main/app-catalog.json"
@@ -45,8 +48,18 @@ object StoreCatalogManager {
                 icon = item.optString("icon", "📦"),
                 packageName = item.getString("packageName"),
                 repository = repository,
-                release = fetchLatestRelease(repository, assetName)
+                release = fetchLatestRelease(repository, assetName),
+                updateHistory = fetchReleaseHistory(repository)
             )
+        }
+    }
+
+    private fun fetchReleaseHistory(repository: String): List<StoreReleaseHistory> {
+        val response = getTextOrNull("https://api.github.com/repos/$repository/releases?per_page=20") ?: return emptyList()
+        val releases = JSONArray(response)
+        return (0 until releases.length()).map { index ->
+            val item = releases.getJSONObject(index)
+            StoreReleaseHistory(item.optString("tag_name").removePrefix("v"), item.optString("published_at").take(10), item.optString("body").trim())
         }
     }
 
