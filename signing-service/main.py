@@ -36,6 +36,11 @@ STATIC_REPOSITORY_KEY_BINDINGS = {
         "key_id": "dyssh",
         "package_name": "com.dincer552.dyssh",
     },
+    # FasterFastMini reuses its existing testpak2 certificate and package identity.
+    "dincer552/fasterfast": {
+        "key_id": "testpak2",
+        "package_name": "com.dincer552.testpak2",
+    },
 }
 OIDC_AUDIENCE = os.environ.get("APK_SIGNER_OIDC_AUDIENCE", "socialworst-apk-signer")
 OIDC_ISSUER = "https://token.actions.githubusercontent.com"
@@ -232,6 +237,23 @@ def bootstrap_signing_profile(
         return {
             "ok": True,
             "created": True,
+            "key_id": key_id,
+            "repository": repository,
+            "package_name": package_name,
+        }
+
+    # A code-reviewed static binding may reuse only its explicitly named package/key pair.
+    # This keeps the existing certificate intact while authorizing a renamed repository.
+    static_binding = STATIC_REPOSITORY_KEY_BINDINGS.get(repository)
+    if (static_binding is not None
+            and static_binding.get("key_id") == key_id
+            and static_binding.get("package_name") == package_name):
+        if config.get("package_name") != package_name:
+            raise HTTPException(status_code=409, detail="signing_profile_package_mismatch")
+        save_allowed_repositories(allowed_repositories() | {repository})
+        return {
+            "ok": True,
+            "created": False,
             "key_id": key_id,
             "repository": repository,
             "package_name": package_name,
