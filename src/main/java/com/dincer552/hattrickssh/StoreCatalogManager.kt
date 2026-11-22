@@ -56,10 +56,16 @@ object StoreCatalogManager {
 
     private fun fetchReleaseHistory(repository: String): List<StoreReleaseHistory> {
         val response = getTextOrNull("https://api.github.com/repos/$repository/releases?per_page=20") ?: return emptyList()
-        val releases = JSONArray(response)
-        return (0 until releases.length()).map { index ->
-            val item = releases.getJSONObject(index)
-            StoreReleaseHistory(item.optString("tag_name").removePrefix("v"), item.optString("published_at").take(10), item.optString("body").trim())
+        return try {
+            val releases = JSONArray(response)
+            (0 until releases.length()).map { index ->
+                val item = releases.getJSONObject(index)
+                val rawDate = item.optString("published_at")
+                val date = rawDate.takeIf { it.length >= 10 && it[4] == '-' && it[7] == '-' }?.take(10).orEmpty()
+                StoreReleaseHistory(item.optString("tag_name").removePrefix("v"), date, item.optString("body").trim())
+            }
+        } catch (_: Exception) {
+            emptyList()
         }
     }
 
