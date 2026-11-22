@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -389,10 +390,10 @@ private fun StoreAppCard(
     Card(
         colors = CardDefaults.cardColors(containerColor = StorePanel),
         shape = RoundedCornerShape(13.dp),
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenDetails)
+        modifier = Modifier.fillMaxWidth()
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenDetails)) {
                 Text(app.icon, fontSize = 25.sp)
                 Column(Modifier.weight(1f).padding(start = 10.dp)) {
                     Text(app.name, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
@@ -440,7 +441,7 @@ private fun StoreAppDetailsDialog(app: StoreAppListing, onDismiss: () -> Unit) {
             Text(app.name, modifier = Modifier.padding(start = 10.dp), fontWeight = FontWeight.Bold)
         } },
         text = {
-            Column(Modifier.fillMaxWidth().height(420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 Text(app.description, color = StoreMuted, fontSize = 13.sp)
                 Text("Uygulama bilgileri", color = StoreGreen, fontWeight = FontWeight.Bold)
                 Text("Paket adı: ${app.packageName}", fontSize = 11.sp)
