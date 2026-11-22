@@ -22,12 +22,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -143,6 +148,7 @@ private fun StoreScreen(
     var readyInstallAppId by remember { mutableStateOf<String?>(null) }
     var installError by remember { mutableStateOf<String?>(null) }
     var showSignerSettings by remember { mutableStateOf(false) }
+    var selectedApp by remember { mutableStateOf<StoreAppListing?>(null) }
 
     fun refreshCatalog() {
         if (loading) return
@@ -318,16 +324,6 @@ private fun StoreScreen(
                     Text(if (loading) "Kontrol…" else "YENİLE")
                 }
             }
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF14271F)),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text("Kişisel uygulama mağazan", color = StoreGreen, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                    Text("Güncellemeler uygun cihazlarda otomatik kurulur. İlk kurulumda veya Android izin istediğinde güvenli onay ekranı açılır.", color = Color(0xFFD2E5DB), fontSize = 11.sp)
-                }
-            }
             if (loading && apps.isEmpty()) {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
                 Text("Uygulamalar kontrol ediliyor…", color = StoreMuted, fontSize = 12.sp)
@@ -348,6 +344,7 @@ private fun StoreScreen(
                         context = context,
                         busy = downloadId != null,
                         refreshKey = "$catalogRevision:$statusRefreshKey",
+                        onOpenDetails = { selectedApp = app },
                         onInstall = {
                             installError = null
                             downloadingApp = app
@@ -367,9 +364,8 @@ private fun StoreScreen(
             Text("Mağaza sürümü ${BuildConfig.VERSION_NAME} • Paketler GitHub'dan alınır", color = StoreMuted, fontSize = 10.sp)
         }
     }
-    if (showSignerSettings) {
-        SignerSetupDialog(onDismiss = { showSignerSettings = false })
-    }
+    if (selectedApp != null) StoreAppDetailsDialog(app = selectedApp!!, onDismiss = { selectedApp = null })
+    if (showSignerSettings) SignerSetupDialog(onDismiss = { showSignerSettings = false })
 }
 
 @Composable
@@ -378,6 +374,7 @@ private fun StoreAppCard(
     context: Context,
     busy: Boolean,
     refreshKey: String,
+    onOpenDetails: () -> Unit,
     onInstall: () -> Unit
 ) {
     val installedCode = remember(app.packageName, refreshKey) { getInstalledVersionCode(context, app.packageName) }
@@ -392,7 +389,7 @@ private fun StoreAppCard(
     Card(
         colors = CardDefaults.cardColors(containerColor = StorePanel),
         shape = RoundedCornerShape(13.dp),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenDetails)
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -432,6 +429,38 @@ private fun StoreAppCard(
             Text("Paket: ${app.packageName}", color = Color(0xFF718293), fontSize = 9.sp)
         }
     }
+}
+
+@Composable
+private fun StoreAppDetailsDialog(app: StoreAppListing, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(app.icon, fontSize = 27.sp)
+            Text(app.name, modifier = Modifier.padding(start = 10.dp), fontWeight = FontWeight.Bold)
+        } },
+        text = {
+            Column(Modifier.fillMaxWidth().height(420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Text(app.description, color = StoreMuted, fontSize = 13.sp)
+                Text("Uygulama bilgileri", color = StoreGreen, fontWeight = FontWeight.Bold)
+                Text("Paket adı: ${app.packageName}", fontSize = 11.sp)
+                Text("GitHub deposu: ${app.repository}", fontSize = 11.sp)
+                Text("Güncel sürüm: ${app.release?.versionName ?: "Bilinmiyor"}", fontSize = 11.sp)
+                Text("Sürüm geçmişi", color = StoreGreen, fontWeight = FontWeight.Bold)
+                if (app.updateHistory.isEmpty()) Text("Henüz sürüm geçmişi bulunamadı.", color = StoreMuted, fontSize = 11.sp)
+                app.updateHistory.forEach { item ->
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text("Sürüm ${item.versionName} • ${item.publishedAt.ifBlank { "Tarih yok" }}", fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                        Text(item.notes.ifBlank { "Bu sürüm için açıklama eklenmemiş." }, color = StoreMuted, fontSize = 11.sp)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("KAPAT") } },
+        containerColor = StorePanel,
+        titleContentColor = Color.White,
+        textContentColor = Color.White
+    )
 }
 
 @Suppress("DEPRECATION")
