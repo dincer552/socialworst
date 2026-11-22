@@ -1,1 +1,3 @@
-LOAD_FROM_ARTIFACTS
+package com.dincer552.hattrickssh
+
+// TEMP - will be replaced immediately
