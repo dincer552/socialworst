@@ -16,6 +16,7 @@ import java.io.IOException
 private const val TAG = "StorePackageInstaller"
 private const val PREFS = "store_package_installer"
 private const val KEY_PENDING_SESSIONS = "pending_sessions"
+private const val SESSION_TTL_MS = 24L * 60L * 60L * 1000L
 
 /**
  * Returns true when the platform API level supports PackageInstaller silent-update
@@ -40,13 +41,26 @@ private fun isPackageInstalled(context: Context, packageName: String): Boolean =
     false
 }
 
+@Suppress("DEPRECATION")
+internal fun readInstalledVersionCode(context: Context, packageName: String): Long? = try {
+    val info = if (Build.VERSION.SDK_INT >= 33) {
+        context.packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0))
+    } else {
+        context.packageManager.getPackageInfo(packageName, 0)
+    }
+    if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
+} catch (_: PackageManager.NameNotFoundException) {
+    null
+}
+
+/** Pure check used after install success and in unit tests. */
+internal fun verifyInstalledVersionMatches(expected: Long?, actual: Long?): Boolean =
+    expected != null && actual != null && expected == actual
+
 /**
  * True when this process is allowed by the platform to request a silent update:
  * - self-update, or
  * - we are the recorded update owner / installer-of-record for an already installed package.
- *
- * On Android 14+ the OS still applies targetSdk thresholds; a false return means we
- * must use the interactive confirmation path.
  */
 internal fun canRequestSilentUpdate(context: Context, packageName: String): Boolean {
     if (packageName == context.packageName) return true
@@ -71,16 +85,14 @@ internal fun canRequestSilentUpdate(context: Context, packageName: String): Bool
 
 /**
  * Single entry point for install and update.
- *
- * - API < 31: classic ACTION_INSTALL_PACKAGE UI.
- * - API >= 31: PackageInstaller session. USER_ACTION_NOT_REQUIRED is set only when
- *   canRequestSilentUpdate() is true; otherwise the OS returns STATUS_PENDING_USER_ACTION
- *   and the receiver launches the confirmation Intent.
- *
- * Returns null on successful session start (or classic intent launch), otherwise an
- * error message for the UI.
+ * expectedVersionCode is optional metadata used for post-install verification.
  */
-fun launchStoreInstallOrUpdate(context: Context, apkUri: Uri, packageName: String): String? {
+fun launchStoreInstallOrUpdate(
+    context: Context,
+    apkUri: Uri,
+    packageName: String,
+    expectedVersionCode: Long? = null
+): String? {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
         return launchApkInstaller(context, apkUri)
     }
@@ -93,7 +105,8 @@ fun launchStoreInstallOrUpdate(context: Context, apkUri: Uri, packageName: Strin
             context = context,
             apkUri = apkUri,
             packageName = packageName,
-            requireUserAction = !silentEligible
+            requireUserAction = !silentEligible,
+            expectedVersionCode = expectedVersionCode
         )
         if (silentEligible) {
             Log.i(TAG, "Silent update session started for $packageName (ownership confirmed)")
@@ -117,7 +130,8 @@ private fun startPackageInstallerSession(
     context: Context,
     apkUri: Uri,
     packageName: String,
-    requireUserAction: Boolean
+    requireUserAction: Boolean,
+    expectedVersionCode: Long?
 ) {
     val installer = context.packageManager.packageInstaller
     val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
@@ -146,7 +160,7 @@ private fun startPackageInstallerSession(
                 }
             }
 
-            rememberPendingSession(context, sessionId, packageName, apkUri)
+            rememberPendingSession(context, sessionId, packageName, apkUri, expectedVersionCode)
 
             val callback = Intent(context, StorePackageInstallReceiver::class.java)
                 .setAction(StorePackageInstallReceiver.ACTION_INSTALL_STATUS)
@@ -154,6 +168,9 @@ private fun startPackageInstallerSession(
                 .putExtra(StorePackageInstallReceiver.EXTRA_APK_URI, apkUri.toString())
                 .putExtra(StorePackageInstallReceiver.EXTRA_SESSION_ID, sessionId)
                 .putExtra(StorePackageInstallReceiver.EXTRA_SILENT_ATTEMPTED, !requireUserAction)
+            if (expectedVersionCode != null) {
+                callback.putExtra(StorePackageInstallReceiver.EXTRA_EXPECTED_VERSION, expectedVersionCode)
+            }
             val statusIntent = PendingIntent.getBroadcast(
                 context,
                 sessionId,
@@ -176,18 +193,25 @@ private fun startPackageInstallerSession(
     }
 }
 
-private fun rememberPendingSession(context: Context, sessionId: Int, packageName: String, apkUri: Uri) {
+private fun rememberPendingSession(
+    context: Context,
+    sessionId: Int,
+    packageName: String,
+    apkUri: Uri,
+    expectedVersionCode: Long?
+) {
     val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     val raw = prefs.getString(KEY_PENDING_SESSIONS, "{}") ?: "{}"
     try {
         val json = org.json.JSONObject(raw)
-        json.put(
-            sessionId.toString(),
-            org.json.JSONObject()
-                .put("packageName", packageName)
-                .put("apkUri", apkUri.toString())
-                .put("createdAt", System.currentTimeMillis())
-        )
+        val entry = org.json.JSONObject()
+            .put("packageName", packageName)
+            .put("apkUri", apkUri.toString())
+            .put("createdAt", System.currentTimeMillis())
+        if (expectedVersionCode != null) {
+            entry.put("expectedVersionCode", expectedVersionCode)
+        }
+        json.put(sessionId.toString(), entry)
         prefs.edit().putString(KEY_PENDING_SESSIONS, json.toString()).apply()
     } catch (error: Exception) {
         Log.w(TAG, "Could not persist pending session $sessionId", error)
@@ -206,6 +230,56 @@ private fun clearPendingSession(context: Context, sessionId: Int) {
     }
 }
 
+/**
+ * After process death or reboot, drop stale PackageInstaller session records and
+ * abandon OS sessions that no longer exist or exceeded TTL. Safe to call on every start.
+ */
+fun reconcileStoreInstallSessions(context: Context) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return
+    val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    val raw = prefs.getString(KEY_PENDING_SESSIONS, "{}") ?: "{}"
+    val json = try {
+        org.json.JSONObject(raw)
+    } catch (_: Exception) {
+        prefs.edit().putString(KEY_PENDING_SESSIONS, "{}").apply()
+        return
+    }
+    if (json.length() == 0) return
+
+    val installer = context.packageManager.packageInstaller
+    val liveIds = try {
+        installer.mySessions.map { it.sessionId }.toSet()
+    } catch (error: Exception) {
+        Log.w(TAG, "Could not list PackageInstaller sessions", error)
+        emptySet()
+    }
+
+    val now = System.currentTimeMillis()
+    val keys = json.keys().asSequence().toList()
+    var changed = false
+    for (key in keys) {
+        val sessionId = key.toIntOrNull() ?: continue
+        val entry = json.optJSONObject(key) ?: continue
+        val createdAt = entry.optLong("createdAt", 0L)
+        val expired = createdAt > 0L && now - createdAt > SESSION_TTL_MS
+        val alive = sessionId in liveIds
+        if (!alive || expired) {
+            if (alive) {
+                try {
+                    installer.abandonSession(sessionId)
+                } catch (_: Exception) {
+                }
+            }
+            json.remove(key)
+            changed = true
+            Log.i(TAG, "Reconciled stale install session $sessionId alive=$alive expired=$expired")
+        }
+    }
+    if (changed) {
+        prefs.edit().putString(KEY_PENDING_SESSIONS, json.toString()).apply()
+    }
+}
+
 /** Receives the final PackageInstaller result and opens Android's approval UI when required. */
 class StorePackageInstallReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -215,13 +289,16 @@ class StorePackageInstallReceiver : BroadcastReceiver() {
         val packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME).orEmpty()
         val sessionId = intent.getIntExtra(EXTRA_SESSION_ID, -1)
         val silentAttempted = intent.getBooleanExtra(EXTRA_SILENT_ATTEMPTED, false)
+        val expectedVersion = if (intent.hasExtra(EXTRA_EXPECTED_VERSION)) {
+            intent.getLongExtra(EXTRA_EXPECTED_VERSION, -1L).takeIf { it >= 0 }
+        } else null
 
         if (sessionId >= 0) clearPendingSession(context, sessionId)
 
         Log.i(
             TAG,
             "Install result for $packageName session=$sessionId status=$status " +
-                "silentAttempted=$silentAttempted message=$message"
+                "silentAttempted=$silentAttempted expected=$expectedVersion message=$message"
         )
 
         when (status) {
@@ -254,12 +331,35 @@ class StorePackageInstallReceiver : BroadcastReceiver() {
             }
 
             PackageInstaller.STATUS_SUCCESS -> {
-                val text = if (silentAttempted) {
-                    "Uygulama sessizce güncellendi."
-                } else {
-                    "Uygulama başarıyla kuruldu / güncellendi."
+                val actual = if (packageName.isNotBlank()) {
+                    readInstalledVersionCode(context, packageName)
+                } else null
+                val verified = verifyInstalledVersionMatches(expectedVersion, actual)
+                val text = when {
+                    verified -> {
+                        if (silentAttempted) {
+                            "Sessiz güncelleme tamamlandı • sürüm $actual doğrulandı."
+                        } else {
+                            "Kurulum tamamlandı • sürüm $actual doğrulandı."
+                        }
+                    }
+                    expectedVersion != null && actual != null -> {
+                        "Kurulum bildirildi ancak sürüm eşleşmedi (beklenen $expectedVersion, kurulu $actual)."
+                    }
+                    actual != null -> {
+                        if (silentAttempted) {
+                            "Uygulama sessizce güncellendi (sürüm $actual)."
+                        } else {
+                            "Uygulama kuruldu / güncellendi (sürüm $actual)."
+                        }
+                    }
+                    else -> {
+                        if (silentAttempted) "Uygulama sessizce güncellendi."
+                        else "Uygulama başarıyla kuruldu / güncellendi."
+                    }
                 }
-                Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
+                Log.i(TAG, "Post-install verify package=$packageName expected=$expectedVersion actual=$actual verified=$verified")
+                Toast.makeText(context, text, Toast.LENGTH_LONG).show()
                 context.sendBroadcast(Intent(ACTION_INSTALL_FINISHED).setPackage(context.packageName))
             }
 
@@ -329,5 +429,6 @@ class StorePackageInstallReceiver : BroadcastReceiver() {
         const val EXTRA_APK_URI = "apk_uri"
         const val EXTRA_SESSION_ID = "session_id"
         const val EXTRA_SILENT_ATTEMPTED = "silent_attempted"
+        const val EXTRA_EXPECTED_VERSION = "expected_version"
     }
 }
