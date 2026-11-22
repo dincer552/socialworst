@@ -1,6 +1,8 @@
 package com.dincer552.hattrickssh
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class StorePackageStateTest {
@@ -39,5 +41,16 @@ class StorePackageStateTest {
 
     @Test fun android11UsesRegularInstallerForUpdates() {
         assertEquals(false, shouldAttemptPackageInstallerUpdate(30, true))
+    }
+
+    @Test fun postInstallVersionMatchesWhenEqual() {
+        assertTrue(verifyInstalledVersionMatches(12L, 12L))
+    }
+
+    @Test fun postInstallVersionFailsWhenMismatchOrMissing() {
+        assertFalse(verifyInstalledVersionMatches(12L, 11L))
+        assertFalse(verifyInstalledVersionMatches(12L, null))
+        assertFalse(verifyInstalledVersionMatches(null, 12L))
+        assertFalse(verifyInstalledVersionMatches(null, null))
     }
 }
