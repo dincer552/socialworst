@@ -70,19 +70,49 @@ object StoreCatalogManager {
     }
 
     private fun fetchLatestRelease(repository: String, assetName: String): StoreRelease? {
-        val response = getTextOrNull("https://api.github.com/repos/$repository/releases/latest") ?: return null
-        val release = JSONObject(response)
-        val tag = release.optString("tag_name")
-        val versionCode = tag.substringAfterLast('.').toIntOrNull()
-            ?: throw IOException("Sürüm etiketi okunamadı: $tag")
-        val assets = release.optJSONArray("assets") ?: return null
-        val asset = (0 until assets.length()).asSequence()
-            .map { assets.getJSONObject(it) }
-            .firstOrNull { it.optString("name") == assetName } ?: return null
-        val url = asset.optString("browser_download_url")
-        if (!url.startsWith("https://")) return null
-        val digest = asset.optString("digest").removePrefix("sha256:").takeIf { it.length == 64 }
-        return StoreRelease(versionCode, tag.removePrefix("v"), url, digest)
+        // Prefer GitHub's latest endpoint, but it excludes pre-releases. Fall back
+        // to the releases collection so a valid published APK is still discoverable.
+        val latest = getTextOrNull("https://api.github.com/repos/$repository/releases/latest")
+        parseReleaseAsset(latest, assetName)?.let { return it }
+
+        val response = getTextOrNull("https://api.github.com/repos/$repository/releases?per_page=20")
+            ?: return null
+        return try {
+            val releases = JSONArray(response)
+            (0 until releases.length()).asSequence()
+                .map { releases.getJSONObject(it) }
+                .filterNot { it.optBoolean("draft", false) }
+                .mapNotNull { parseReleaseAsset(it, assetName) }
+                .firstOrNull()
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun parseReleaseAsset(response: String?, assetName: String): StoreRelease? {
+        if (response.isNullOrBlank()) return null
+        return try {
+            parseReleaseAsset(JSONObject(response), assetName)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun parseReleaseAsset(release: JSONObject, assetName: String): StoreRelease? {
+        return try {
+            val tag = release.optString("tag_name")
+            val versionCode = tag.substringAfterLast('.').toIntOrNull() ?: return null
+            val assets = release.optJSONArray("assets") ?: return null
+            val asset = (0 until assets.length()).asSequence()
+                .map { assets.getJSONObject(it) }
+                .firstOrNull { it.optString("name") == assetName } ?: return null
+            val url = asset.optString("browser_download_url")
+            if (!url.startsWith("https://")) return null
+            val digest = asset.optString("digest").removePrefix("sha256:").takeIf { it.length == 64 }
+            StoreRelease(versionCode, tag.removePrefix("v"), url, digest)
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun getText(url: String): String =
