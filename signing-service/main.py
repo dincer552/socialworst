@@ -28,6 +28,15 @@ PACKAGE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$")
 ALLOWED_REPOSITORIES = {
     item.strip() for item in os.environ.get("ALLOWED_GITHUB_REPOSITORIES", "").split(",") if item.strip()
 }
+# Explicit repository-to-key bindings are code-reviewed deployment policy.
+# DYSSH uses the original existing key; this grants only this repository access
+# to key_id "dyssh" and never creates or replaces a signing certificate.
+STATIC_REPOSITORY_KEY_BINDINGS = {
+    "dincer552/dyssh": {
+        "key_id": "dyssh",
+        "package_name": "com.dincer552.dyssh",
+    },
+}
 OIDC_AUDIENCE = os.environ.get("APK_SIGNER_OIDC_AUDIENCE", "socialworst-apk-signer")
 OIDC_ISSUER = "https://token.actions.githubusercontent.com"
 JWKS_URL = OIDC_ISSUER + "/.well-known/jwks"
@@ -62,7 +71,7 @@ def normalize_repository(value: str) -> str:
 
 
 def allowed_repositories() -> set[str]:
-    repositories = set(ALLOWED_REPOSITORIES)
+    repositories = set(ALLOWED_REPOSITORIES) | set(STATIC_REPOSITORY_KEY_BINDINGS)
     if REPOSITORY_FILE.is_file():
         try:
             stored = json.loads(get_cipher().decrypt(REPOSITORY_FILE.read_bytes()))
@@ -389,7 +398,14 @@ async def sign_apk(
     token = authorization.removeprefix("Bearer ").strip() if authorization else ""
     claims = verify_github_oidc(token)
     config = read_key(key_id)
-    if claims.get("repository") not in key_repositories(config):
+    repository = claims.get("repository")
+    static_binding = STATIC_REPOSITORY_KEY_BINDINGS.get(repository)
+    statically_authorized = (
+        static_binding is not None
+        and static_binding.get("key_id") == key_id
+        and static_binding.get("package_name") == config.get("package_name")
+    )
+    if repository not in key_repositories(config) and not statically_authorized:
         raise HTTPException(status_code=403, detail="repository_not_authorized_for_key")
     raw = await apk.read(MAX_APK_BYTES + 1)
     if not raw or len(raw) > MAX_APK_BYTES:
