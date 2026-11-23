@@ -295,24 +295,25 @@ private fun StoreScreen(
                         activeUpdateAppId = null
                     } else {
                         updatePhase = "dogrulaniyor"
-                        val validation = withContext(Dispatchers.IO) {
-                            validateDownloadedApk(context, uri, app)
+                        installPackageName = app.packageName
+                        val staged = try {
+                            withContext(Dispatchers.IO) {
+                                val stagedUri = createInstallableApkUri(context, uri)
+                                val validation = validateDownloadedApk(context, stagedUri, app)
+                                if (validation != null) null to validation else stagedUri to null
+                            }
+                        } catch (error: Exception) {
+                            null to (error.message ?: "Paket hazırlanamadı.")
                         }
-                        if (validation != null) {
-                            installError = validation
+                        val stagedUri = staged.first
+                        val validationError = staged.second
+                        if (validationError != null || stagedUri == null) {
+                            installError = validationError ?: "Paket doğrulanamadı."
                             updatePhase = null
                             activeUpdateAppId = null
                         } else {
-                            installPackageName = app.packageName
-                            installUri = try {
-                                withContext(Dispatchers.IO) { createInstallableApkUri(context, uri) }
-                            } catch (error: Exception) {
-                                installError = error.message ?: "Paket kurulum için hazırlanamadı."
-                                updatePhase = null
-                                activeUpdateAppId = null
-                                null
-                            }
-                            if (installUri != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                            installUri = stagedUri
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
                                 !context.packageManager.canRequestPackageInstalls()
                             ) {
                                 updatePhase = "izin"
@@ -320,19 +321,17 @@ private fun StoreScreen(
                                     Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
                                 )
                             } else {
-                                installUri?.let { stagedUri ->
-                                    updatePhase = "kuruluyor"
-                                    val err = launchStoreInstallOrUpdate(
-                                        context,
-                                        stagedUri,
-                                        app.packageName,
-                                        app.release?.versionCode?.toLong()
-                                    )
-                                    if (err != null) {
-                                        installError = err
-                                        updatePhase = null
-                                        activeUpdateAppId = null
-                                    }
+                                updatePhase = "kuruluyor"
+                                val err = launchStoreInstallOrUpdate(
+                                    context,
+                                    stagedUri,
+                                    app.packageName,
+                                    app.release?.versionCode?.toLong()
+                                )
+                                if (err != null) {
+                                    installError = err
+                                    updatePhase = null
+                                    activeUpdateAppId = null
                                 }
                             }
                         }
@@ -377,9 +376,9 @@ private fun StoreScreen(
             installError?.let { Text(it, color = Color(0xFFFF8A80), fontSize = 12.sp) }
             val phaseLabel = when (updatePhase) {
                 "indiriliyor" -> "${downloadingApp?.name ?: "Uygulama"} güncelleniyor • $downloadPercent%"
-                "dogrulaniyor" -> "Paket doğrulanıyor…"
+                "dogrulaniyor" -> "Paket kontrol ediliyor (birkaç saniye sürebilir)…"
                 "izin" -> "Kurulum izni gerekli — bir kez izin verin"
-                "kuruluyor" -> "Kurulum başlatıldı…"
+                "kuruluyor" -> "Android kurulum ekranı açılıyor / sessiz kurulum deneniyor…"
                 else -> null
             }
             if (phaseLabel != null) {
