@@ -6,7 +6,9 @@
     "icon": "🛍️",
     "packageName": "com.dincer552.hattrickssh",
     "repository": "dincer552/socialworst",
-    "assetName": "my-app-store.apk"
+    "assetName": "my-app-store.apk",
+    "versionCode": 253,
+    "versionName": "0.3.253"
   },
   {
     "id": "dyssh",
@@ -15,7 +17,9 @@
     "icon": "🔐",
     "packageName": "com.dincer552.dyssh",
     "repository": "dincer552/dyssh",
-    "assetName": "dyssh.apk"
+    "assetName": "dyssh.apk",
+    "versionCode": 41,
+    "versionName": "1.0.41"
   },
   {
     "id": "instaviewer",
@@ -24,7 +28,9 @@
     "icon": "▶️",
     "packageName": "com.dincer552.instaviewer",
     "repository": "dincer552/instaviewer",
-    "assetName": "instaviewer.apk"
+    "assetName": "instaviewer.apk",
+    "versionCode": 67,
+    "versionName": "1.0.67"
   },
   {
     "id": "test-apk",
@@ -42,6 +48,8 @@
     "icon": "🕹️",
     "packageName": "com.dincer552.testpak2",
     "repository": "dincer552/testpak2",
-    "assetName": "testpak2.apk"
+    "assetName": "testpak2.apk",
+    "versionCode": 8,
+    "versionName": "1.0.8"
   }
 ]
