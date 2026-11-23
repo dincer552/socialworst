@@ -1,12 +1,10 @@
 package com.dincer552.hattrickssh
 
 import android.app.DownloadManager
-import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -66,14 +64,6 @@ class StoreActivity : ComponentActivity() {
     private val installRequestState = mutableStateOf<Pair<String, Int>?>(null)
     private val resumeRevision = mutableIntStateOf(0)
     private var installRequestSequence = 0
-    private val packageInstallResultReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action == StorePackageInstallReceiver.ACTION_INSTALL_FINISHED) {
-                resumeRevision.intValue += 1
-            }
-        }
-    }
-
     private fun captureInstallRequest(source: Intent?) {
         val appId = source?.getStringExtra("install_app_id")
         if (!appId.isNullOrBlank()) {
@@ -109,22 +99,6 @@ class StoreActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         captureInstallRequest(intent)
-    }
-
-    override fun onStart() {
-        super.onStart()
-        val filter = IntentFilter(StorePackageInstallReceiver.ACTION_INSTALL_FINISHED)
-        if (Build.VERSION.SDK_INT >= 33) {
-            registerReceiver(packageInstallResultReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            @Suppress("DEPRECATION")
-            registerReceiver(packageInstallResultReceiver, filter)
-        }
-    }
-
-    override fun onStop() {
-        unregisterReceiver(packageInstallResultReceiver)
-        super.onStop()
     }
 
     override fun onResume() {
@@ -353,7 +327,7 @@ private fun StoreScreen(
                                 )
                             } else {
                                 updatePhase = "kuruluyor"
-                                StoreUpdateTrace.event(context, "install", "start", "PackageInstaller / classic")
+                                StoreUpdateTrace.event(context, "install", "start", "Android standart APK kurulum ekranı")
                                 val err = launchStoreInstallOrUpdate(
                                     context,
                                     stagedUri,
@@ -367,7 +341,7 @@ private fun StoreScreen(
                                     updatePhase = null
                                     activeUpdateAppId = null
                                 } else {
-                                    StoreUpdateTrace.event(context, "install", "session_started", "Waiting OS result")
+                                    StoreUpdateTrace.event(context, "install", "session_started", "Waiting for user confirmation in Android installer")
                                 }
                             }
                         }
@@ -419,7 +393,7 @@ private fun StoreScreen(
                 "indiriliyor" -> "${downloadingApp?.name ?: "Uygulama"} güncelleniyor • $downloadPercent%"
                 "dogrulaniyor" -> "Paket kontrol ediliyor (birkaç saniye sürebilir)…"
                 "izin" -> "Kurulum izni gerekli — bir kez izin verin"
-                "kuruluyor" -> "Android kurulum ekranı açılıyor / sessiz kurulum deneniyor…"
+                "kuruluyor" -> "Android kurulum onayı açılıyor…"
                 else -> null
             }
             if (phaseLabel != null) {
@@ -491,7 +465,7 @@ private fun StoreScreen(
                                                 activeUpdateAppId = null
                                             } else {
                                                 StoreUpdateNotifications.removeReady(context, app.id)
-                                                StoreUpdateTrace.event(context, "install", "session_started", "Waiting OS")
+                                                StoreUpdateTrace.event(context, "install", "session_started", "Waiting for user confirmation in Android installer")
                                             }
                                         }
                                     } catch (error: Exception) {
@@ -514,7 +488,7 @@ private fun StoreScreen(
                                 )
                                 val request = DownloadManager.Request(Uri.parse(app.downloadUrl))
                                     .setTitle("${app.name} güncelleniyor")
-                                    .setDescription("${app.versionName} • otomatik kurulum")
+                                    .setDescription("${app.versionName} • Android onaylı kurulum")
                                     .setMimeType("application/vnd.android.package-archive")
                                     .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
                                     .setAllowedOverMetered(true)
@@ -537,7 +511,7 @@ private fun StoreScreen(
                     )
                 }
             }
-            Text("Mağaza ${BuildConfig.VERSION_NAME} • Minimum onay ile otomatik güncelleme", color = StoreMuted, fontSize = 10.sp)
+            Text("Mağaza ${BuildConfig.VERSION_NAME} • Kurulum Android onayıyla tamamlanır", color = StoreMuted, fontSize = 10.sp)
         }
     }
     if (selectedApp != null) StoreAppDetailsDialog(app = selectedApp!!, onDismiss = { selectedApp = null })
