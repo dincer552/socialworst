@@ -34,6 +34,7 @@ data class StoreRelease(
 
 data class StoreReleaseHistory(val versionName: String, val publishedAt: String, val notes: String)
 
+/** Katalog + GitHub release; 403 durumunda son bilinen sürümleri cache'den gösterir. */
 object StoreCatalogManager {
     private const val CATALOG_URL = "https://raw.githubusercontent.com/dincer552/socialworst/main/app-catalog.json"
     private const val PREFS = "store_catalog_cache"
@@ -66,9 +67,8 @@ object StoreCatalogManager {
             val id = item.getString("id")
             val repository = item.getString("repository")
             val assetName = item.getString("assetName")
-            // Küçük gecikme: ardışık isteklerle rate limit'e daha az takıl
             if (index > 0) {
-                try { delay(120) } catch (_: Exception) {}
+                try { delay(150) } catch (_: Exception) {}
             }
             var release = fetchLatestRelease(repository, assetName)
             if (release != null) {
@@ -94,7 +94,7 @@ object StoreCatalogManager {
             )
         }
 
-        if (anyLive || liveReleases.length() > 0) {
+        if (liveReleases.length() > 0) {
             saveCachedReleases(context, liveReleases)
         }
         usedCache = anyCache && !anyLive
@@ -216,13 +216,9 @@ object StoreCatalogManager {
     private fun mapNetworkError(error: IOException): IOException {
         val code = lastHttpCode
         val message = when (code) {
-            403, 429 ->
-                "GitHub istek sınırı (HTTP $code). Birkaç dakika sonra YENİLE. " +
-                    "Çok sık yenilemek limiti doldurur."
-            0 ->
-                "Ağ hatası: ${error.message ?: "bağlantı yok"}. İnterneti kontrol et."
-            else ->
-                error.message ?: "GitHub yanıt vermedi (HTTP $code)."
+            403, 429 -> "GitHub istek sınırı (HTTP $code). Birkaç dakika sonra YENİLE."
+            0 -> "Ağ hatası: ${error.message ?: "bağlantı yok"}. İnterneti kontrol et."
+            else -> error.message ?: "GitHub yanıt vermedi (HTTP $code)."
         }
         lastErrorHint = message
         return IOException(message, error)
