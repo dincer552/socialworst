@@ -1,6 +1,8 @@
 package com.dincer552.hattrickssh
 
+import android.content.Context
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -34,45 +36,115 @@ data class StoreReleaseHistory(val versionName: String, val publishedAt: String,
 
 object StoreCatalogManager {
     private const val CATALOG_URL = "https://raw.githubusercontent.com/dincer552/socialworst/main/app-catalog.json"
+    private const val PREFS = "store_catalog_cache"
+    private const val KEY_RELEASES = "releases_json"
 
-    @Volatile
-    var lastHttpCode: Int = 0
+    @Volatile var lastHttpCode: Int = 0
+        private set
+    @Volatile var lastErrorHint: String? = null
+        private set
+    @Volatile var usedCache: Boolean = false
         private set
 
-    @Volatile
-    var lastErrorHint: String? = null
-        private set
-
-    suspend fun loadCatalog(): List<StoreAppListing> = withContext(Dispatchers.IO) {
+    suspend fun loadCatalog(context: Context): List<StoreAppListing> = withContext(Dispatchers.IO) {
         lastErrorHint = null
         lastHttpCode = 0
+        usedCache = false
         val catalogText = try {
             getText(CATALOG_URL, forGithubApi = false)
         } catch (error: IOException) {
             throw mapNetworkError(error)
         }
         val catalog = JSONArray(catalogText)
-        (0 until catalog.length()).map { index ->
+        val cached = loadCachedReleases(context)
+        val liveReleases = JSONObject()
+        var anyLive = false
+        var anyCache = false
+
+        val listings = (0 until catalog.length()).map { index ->
             val item = catalog.getJSONObject(index)
+            val id = item.getString("id")
             val repository = item.getString("repository")
             val assetName = item.getString("assetName")
-            // Geçmiş her yenilemede 5 ekstra API çağrısı yapıyordu → rate limit.
-            // Liste için sadece latest release yeterli.
+            // Küçük gecikme: ardışık isteklerle rate limit'e daha az takıl
+            if (index > 0) {
+                try { delay(120) } catch (_: Exception) {}
+            }
+            var release = fetchLatestRelease(repository, assetName)
+            if (release != null) {
+                anyLive = true
+                liveReleases.put(id, releaseToJson(release))
+            } else {
+                val cachedRelease = cached.optJSONObject(id)?.let { jsonToRelease(it) }
+                if (cachedRelease != null) {
+                    release = cachedRelease
+                    anyCache = true
+                    liveReleases.put(id, releaseToJson(cachedRelease))
+                }
+            }
             StoreAppListing(
-                id = item.getString("id"),
+                id = id,
                 name = item.getString("name"),
                 description = item.optString("description"),
                 icon = item.optString("icon", "📦"),
                 packageName = item.getString("packageName"),
                 repository = repository,
-                release = fetchLatestRelease(repository, assetName),
+                release = release,
                 updateHistory = emptyList()
             )
         }
+
+        if (anyLive || liveReleases.length() > 0) {
+            saveCachedReleases(context, liveReleases)
+        }
+        usedCache = anyCache && !anyLive
+        if (usedCache) {
+            lastErrorHint = "GitHub geçici olarak sürüm veremedi; son bilinen sürümler gösteriliyor."
+        } else if (!anyLive && listings.any { it.release == null }) {
+            lastErrorHint = "Sürüm bilgisi alınamadı (HTTP $lastHttpCode). Birkaç dakika sonra YENİLE."
+        }
+        listings
     }
 
     suspend fun loadReleaseHistory(repository: String): List<StoreReleaseHistory> =
         withContext(Dispatchers.IO) { fetchReleaseHistory(repository) }
+
+    private fun releaseToJson(r: StoreRelease): JSONObject =
+        JSONObject()
+            .put("versionCode", r.versionCode)
+            .put("versionName", r.versionName)
+            .put("downloadUrl", r.downloadUrl)
+            .put("sha256", r.sha256 ?: JSONObject.NULL)
+
+    private fun jsonToRelease(o: JSONObject): StoreRelease? = try {
+        val url = o.optString("downloadUrl")
+        if (!url.startsWith("https://")) return null
+        StoreRelease(
+            versionCode = o.getInt("versionCode"),
+            versionName = o.optString("versionName"),
+            downloadUrl = url,
+            sha256 = o.optString("sha256").takeIf { it.length == 64 }
+        )
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun loadCachedReleases(context: Context): JSONObject {
+        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_RELEASES, "{}") ?: "{}"
+        return try {
+            JSONObject(raw)
+        } catch (_: Exception) {
+            JSONObject()
+        }
+    }
+
+    private fun saveCachedReleases(context: Context, releases: JSONObject) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_RELEASES, releases.toString())
+            .apply()
+    }
 
     private fun fetchReleaseHistory(repository: String): List<StoreReleaseHistory> {
         val response = getTextOrNull(
@@ -184,7 +256,6 @@ object StoreCatalogManager {
             lastHttpCode = code
             return when (code) {
                 in 200..299 -> connection.inputStream.bufferedReader().use { it.readText() }
-                // Rate limit / abuse: soft-fail instead of killing the whole UI
                 HttpURLConnection.HTTP_NOT_FOUND,
                 HttpURLConnection.HTTP_FORBIDDEN,
                 429 -> {
