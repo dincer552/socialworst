@@ -2,7 +2,6 @@ package com.dincer552.hattrickssh
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -34,7 +33,6 @@ data class StoreRelease(
 
 data class StoreReleaseHistory(val versionName: String, val publishedAt: String, val notes: String)
 
-/** Katalog + GitHub release; 403 durumunda son bilinen sürümleri cache'den gösterir. */
 object StoreCatalogManager {
     private const val CATALOG_URL = "https://raw.githubusercontent.com/dincer552/socialworst/main/app-catalog.json"
     private const val PREFS = "store_catalog_cache"
@@ -60,11 +58,10 @@ object StoreCatalogManager {
         val cached = loadCachedReleases(context)
         val liveReleases = JSONObject()
         var anyLive = false
-        var anyCache = false
+        var anyFallback = false
         val listings = ArrayList<StoreAppListing>(catalog.length())
 
         for (index in 0 until catalog.length()) {
-            if (index > 0) delay(150)
             val item = catalog.getJSONObject(index)
             val id = item.getString("id")
             val repository = item.getString("repository")
@@ -74,11 +71,12 @@ object StoreCatalogManager {
                 anyLive = true
                 liveReleases.put(id, releaseToJson(release))
             } else {
-                val cachedRelease = cached.optJSONObject(id)?.let { jsonToRelease(it) }
-                if (cachedRelease != null) {
-                    release = cachedRelease
-                    anyCache = true
-                    liveReleases.put(id, releaseToJson(cachedRelease))
+                val fromCache = cached.optJSONObject(id)?.let { jsonToRelease(it) }
+                val fromCatalog = releaseFromCatalogHints(item, repository, assetName)
+                release = fromCache ?: fromCatalog
+                if (release != null) {
+                    anyFallback = true
+                    liveReleases.put(id, releaseToJson(release))
                 }
             }
             listings.add(
@@ -98,13 +96,23 @@ object StoreCatalogManager {
         if (liveReleases.length() > 0) {
             saveCachedReleases(context, liveReleases)
         }
-        usedCache = anyCache && !anyLive
+        usedCache = anyFallback && !anyLive
         if (usedCache) {
-            lastErrorHint = "GitHub geçici olarak sürüm veremedi; son bilinen sürümler gösteriliyor."
+            lastErrorHint = "GitHub API sınırlı; katalog/önbellek sürümleri gösteriliyor."
         } else if (!anyLive && listings.any { it.release == null }) {
             lastErrorHint = "Sürüm bilgisi alınamadı (HTTP $lastHttpCode). Birkaç dakika sonra YENİLE."
         }
         listings
+    }
+
+    /** app-catalog.json içindeki versionCode/versionName ile GitHub indirme URL'si üretir. */
+    private fun releaseFromCatalogHints(item: JSONObject, repository: String, assetName: String): StoreRelease? {
+        val versionCode = item.optInt("versionCode", 0)
+        val versionName = item.optString("versionName").trim()
+        if (versionCode <= 0 || versionName.isBlank()) return null
+        val tag = if (versionName.startsWith("v")) versionName else "v$versionName"
+        val url = "https://github.com/$repository/releases/download/$tag/$assetName"
+        return StoreRelease(versionCode, versionName.removePrefix("v"), url, null)
     }
 
     suspend fun loadReleaseHistory(repository: String): List<StoreReleaseHistory> =
