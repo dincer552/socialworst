@@ -35,12 +35,29 @@ data class StoreReleaseHistory(val versionName: String, val publishedAt: String,
 object StoreCatalogManager {
     private const val CATALOG_URL = "https://raw.githubusercontent.com/dincer552/socialworst/main/app-catalog.json"
 
+    @Volatile
+    var lastHttpCode: Int = 0
+        private set
+
+    @Volatile
+    var lastErrorHint: String? = null
+        private set
+
     suspend fun loadCatalog(): List<StoreAppListing> = withContext(Dispatchers.IO) {
-        val catalog = JSONArray(getText(CATALOG_URL))
+        lastErrorHint = null
+        lastHttpCode = 0
+        val catalogText = try {
+            getText(CATALOG_URL, forGithubApi = false)
+        } catch (error: IOException) {
+            throw mapNetworkError(error)
+        }
+        val catalog = JSONArray(catalogText)
         (0 until catalog.length()).map { index ->
             val item = catalog.getJSONObject(index)
             val repository = item.getString("repository")
             val assetName = item.getString("assetName")
+            // Geçmiş her yenilemede 5 ekstra API çağrısı yapıyordu → rate limit.
+            // Liste için sadece latest release yeterli.
             StoreAppListing(
                 id = item.getString("id"),
                 name = item.getString("name"),
@@ -49,13 +66,19 @@ object StoreCatalogManager {
                 packageName = item.getString("packageName"),
                 repository = repository,
                 release = fetchLatestRelease(repository, assetName),
-                updateHistory = fetchReleaseHistory(repository)
+                updateHistory = emptyList()
             )
         }
     }
 
+    suspend fun loadReleaseHistory(repository: String): List<StoreReleaseHistory> =
+        withContext(Dispatchers.IO) { fetchReleaseHistory(repository) }
+
     private fun fetchReleaseHistory(repository: String): List<StoreReleaseHistory> {
-        val response = getTextOrNull("https://api.github.com/repos/$repository/releases?per_page=20") ?: return emptyList()
+        val response = getTextOrNull(
+            "https://api.github.com/repos/$repository/releases?per_page=10",
+            forGithubApi = true
+        ) ?: return emptyList()
         return try {
             val releases = JSONArray(response)
             (0 until releases.length()).map { index ->
@@ -70,13 +93,16 @@ object StoreCatalogManager {
     }
 
     private fun fetchLatestRelease(repository: String, assetName: String): StoreRelease? {
-        // Prefer GitHub's latest endpoint, but it excludes pre-releases. Fall back
-        // to the releases collection so a valid published APK is still discoverable.
-        val latest = getTextOrNull("https://api.github.com/repos/$repository/releases/latest")
+        val latest = getTextOrNull(
+            "https://api.github.com/repos/$repository/releases/latest",
+            forGithubApi = true
+        )
         parseReleaseAsset(latest, assetName)?.let { return it }
 
-        val response = getTextOrNull("https://api.github.com/repos/$repository/releases?per_page=20")
-            ?: return null
+        val response = getTextOrNull(
+            "https://api.github.com/repos/$repository/releases?per_page=5",
+            forGithubApi = true
+        ) ?: return null
         return try {
             val releases = JSONArray(response)
             (0 until releases.length()).asSequence()
@@ -115,24 +141,65 @@ object StoreCatalogManager {
         }
     }
 
-    private fun getText(url: String): String =
-        getTextOrNull(url) ?: throw IOException("Katalog veya GitHub servisi yanıt vermedi.")
+    private fun mapNetworkError(error: IOException): IOException {
+        val code = lastHttpCode
+        val message = when (code) {
+            403, 429 ->
+                "GitHub istek sınırı (HTTP $code). Birkaç dakika sonra YENİLE. " +
+                    "Çok sık yenilemek limiti doldurur."
+            0 ->
+                "Ağ hatası: ${error.message ?: "bağlantı yok"}. İnterneti kontrol et."
+            else ->
+                error.message ?: "GitHub yanıt vermedi (HTTP $code)."
+        }
+        lastErrorHint = message
+        return IOException(message, error)
+    }
 
-    private fun getTextOrNull(address: String): String? {
+    private fun getText(url: String, forGithubApi: Boolean): String =
+        getTextOrNull(url, forGithubApi)
+            ?: throw IOException(
+                if (lastHttpCode == 403 || lastHttpCode == 429) {
+                    "GitHub istek sınırı (HTTP $lastHttpCode). Birkaç dakika sonra YENİLE."
+                } else {
+                    "Katalog veya GitHub servisi yanıt vermedi (HTTP $lastHttpCode)."
+                }
+            )
+
+    private fun getTextOrNull(address: String, forGithubApi: Boolean): String? {
         val connection = (URL(address).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = 12_000
             readTimeout = 18_000
-            setRequestProperty("Accept", "application/vnd.github+json")
-            setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
-            setRequestProperty("User-Agent", "My-App-Store-Android")
+            setRequestProperty("User-Agent", "My-App-Store-Android/1.0")
+            if (forGithubApi) {
+                setRequestProperty("Accept", "application/vnd.github+json")
+                setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
+            } else {
+                setRequestProperty("Accept", "application/json, text/plain, */*")
+            }
         }
         try {
-            return when (val code = connection.responseCode) {
+            val code = connection.responseCode
+            lastHttpCode = code
+            return when (code) {
                 in 200..299 -> connection.inputStream.bufferedReader().use { it.readText() }
-                HttpURLConnection.HTTP_NOT_FOUND -> null
-                else -> throw IOException("GitHub HTTP $code")
+                // Rate limit / abuse: soft-fail instead of killing the whole UI
+                HttpURLConnection.HTTP_NOT_FOUND,
+                HttpURLConnection.HTTP_FORBIDDEN,
+                429 -> {
+                    lastErrorHint = "GitHub HTTP $code"
+                    null
+                }
+                else -> {
+                    lastErrorHint = "GitHub HTTP $code"
+                    null
+                }
             }
+        } catch (error: Exception) {
+            lastHttpCode = 0
+            lastErrorHint = error.message
+            return null
         } finally {
             connection.disconnect()
         }
