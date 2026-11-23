@@ -125,17 +125,22 @@ object StoreCatalogManager {
             .put("downloadUrl", r.downloadUrl)
             .put("sha256", r.sha256 ?: JSONObject.NULL)
 
-    private fun jsonToRelease(o: JSONObject): StoreRelease? = try {
-        val url = o.optString("downloadUrl")
-        if (!url.startsWith("https://")) return null
-        StoreRelease(
-            versionCode = o.getInt("versionCode"),
-            versionName = o.optString("versionName"),
-            downloadUrl = url,
-            sha256 = o.optString("sha256").takeIf { it.length == 64 }
-        )
-    } catch (_: Exception) {
-        null
+    private fun jsonToRelease(o: JSONObject): StoreRelease? {
+        return try {
+            val url = o.optString("downloadUrl")
+            if (!url.startsWith("https://")) {
+                null
+            } else {
+                StoreRelease(
+                    versionCode = o.getInt("versionCode"),
+                    versionName = o.optString("versionName"),
+                    downloadUrl = url,
+                    sha256 = o.optString("sha256").takeIf { it.length == 64 }
+                )
+            }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun loadCachedReleases(context: Context): JSONObject {
