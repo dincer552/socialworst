@@ -163,9 +163,15 @@ private fun StoreScreen(
         loadError = null
         scope.launch {
             try {
-                apps = StoreCatalogManager.loadCatalog()
+                apps = StoreCatalogManager.loadCatalog(context)
                 catalogRevision++
-                if (apps.isEmpty()) loadError = "Katalog boş. app-catalog.json dosyasını kontrol edin."
+                if (apps.isEmpty()) {
+                    loadError = "Katalog boş. app-catalog.json dosyasını kontrol edin."
+                } else if (StoreCatalogManager.lastErrorHint != null) {
+                    loadError = StoreCatalogManager.lastErrorHint
+                } else {
+                    loadError = null
+                }
             } catch (error: Exception) {
                 loadError = error.message ?: "Uygulama kataloğu alınamadı."
             } finally {
@@ -288,7 +294,6 @@ private fun StoreScreen(
             downloadPercent = snapshot.second
             when (snapshot.first) {
                 DownloadManager.STATUS_SUCCESSFUL -> {
-                    // downloadId null → LaunchedEffect iptal; validate scope.launch ile devam eder.
                     val uri = snapshot.third
                     val app = downloadingApp
                     val finishedId = id
