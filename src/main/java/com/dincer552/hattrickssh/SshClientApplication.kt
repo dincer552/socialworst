@@ -5,7 +5,6 @@ import android.app.Application
 class SshClientApplication : Application() {
     override fun onCreate() {
         super.onCreate()
-        // Drop stale PackageInstaller session records after process death / reboot.
-        reconcileStoreInstallSessions(this)
+        // Installation is handed directly to Android's interactive APK installer.
     }
 }
