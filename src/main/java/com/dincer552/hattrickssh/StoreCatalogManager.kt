@@ -61,15 +61,14 @@ object StoreCatalogManager {
         val liveReleases = JSONObject()
         var anyLive = false
         var anyCache = false
+        val listings = ArrayList<StoreAppListing>(catalog.length())
 
-        val listings = (0 until catalog.length()).map { index ->
+        for (index in 0 until catalog.length()) {
+            if (index > 0) delay(150)
             val item = catalog.getJSONObject(index)
             val id = item.getString("id")
             val repository = item.getString("repository")
             val assetName = item.getString("assetName")
-            if (index > 0) {
-                try { delay(150) } catch (_: Exception) {}
-            }
             var release = fetchLatestRelease(repository, assetName)
             if (release != null) {
                 anyLive = true
@@ -82,15 +81,17 @@ object StoreCatalogManager {
                     liveReleases.put(id, releaseToJson(cachedRelease))
                 }
             }
-            StoreAppListing(
-                id = id,
-                name = item.getString("name"),
-                description = item.optString("description"),
-                icon = item.optString("icon", "📦"),
-                packageName = item.getString("packageName"),
-                repository = repository,
-                release = release,
-                updateHistory = emptyList()
+            listings.add(
+                StoreAppListing(
+                    id = id,
+                    name = item.getString("name"),
+                    description = item.optString("description"),
+                    icon = item.optString("icon", "📦"),
+                    packageName = item.getString("packageName"),
+                    repository = repository,
+                    release = release,
+                    updateHistory = emptyList()
+                )
             )
         }
 
