@@ -21,7 +21,7 @@ class StoreUpdateWorker(context: Context, params: WorkerParameters) : CoroutineW
             val manager = applicationContext.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
             val prefs = applicationContext.getSharedPreferences(StoreUpdateNotifications.PREFS, Context.MODE_PRIVATE)
             val pending = JSONObject(prefs.getString(StoreUpdateNotifications.PENDING, "{}") ?: "{}")
-            val apps = StoreCatalogManager.loadCatalog()
+            val apps = StoreCatalogManager.loadCatalog(applicationContext)
             
             var hasWork = false
             apps.forEach { app ->
@@ -31,7 +31,6 @@ class StoreUpdateWorker(context: Context, params: WorkerParameters) : CoroutineW
                 val key = "${app.id}:${release.versionCode}"
                 if (pending.has(key)) return@forEach
                 
-                // Check if already downloaded and ready
                 if (StoreUpdateNotifications.isReady(applicationContext, app.id)) return@forEach
                 
                 val request = DownloadManager.Request(Uri.parse(release.downloadUrl))
@@ -59,24 +58,10 @@ class StoreUpdateWorker(context: Context, params: WorkerParameters) : CoroutineW
             }
             
             prefs.edit().putString(StoreUpdateNotifications.PENDING, pending.toString()).apply()
-            
-            // Clean up old pending entries (older than 24 hours)
             cleanupOldPending(prefs, pending)
-            
-            if (hasWork) {
-                Result.success()
-            } else {
-                Result.success() // No updates needed is also success
-            }
+            Result.success()
         } catch (e: Exception) {
-            // Check if it's a rate limit error (HTTP 403/429)
-            if (e.message?.contains("403") == true || e.message?.contains("429") == true || e.message?.contains("rate limit") == true) {
-                // For rate limiting, retry with longer backoff
-                Result.retry()
-            } else {
-                // For other errors, retry with exponential backoff (handled by WorkManager)
-                Result.retry()
-            }
+            Result.retry()
         }
     }
 
@@ -91,14 +76,12 @@ class StoreUpdateWorker(context: Context, params: WorkerParameters) : CoroutineW
     }
 
     private fun cleanupOldPending(prefs: android.content.SharedPreferences, pending: JSONObject) {
-        // Remove entries older than 24 hours (we don't track timestamps, so we limit by count)
         if (pending.length() > 20) {
             val keys = pending.keys()
             val keysList = mutableListOf<String>()
             while (keys.hasNext()) {
                 keysList.add(keys.next().toString())
             }
-            // Keep only the most recent 20 entries
             if (keysList.size > 20) {
                 keysList.take(keysList.size - 20).forEach { pending.remove(it) }
                 prefs.edit().putString(StoreUpdateNotifications.PENDING, pending.toString()).apply()
@@ -112,10 +95,7 @@ class StoreUpdateWorker(context: Context, params: WorkerParameters) : CoroutineW
 
         fun enqueuePeriodicCheck(context: Context) {
             val workManager = WorkManager.getInstance(context)
-            
-            // Cancel any existing periodic work with same name
             workManager.cancelAllWorkByTag(WORKER_TAG)
-            
             val request = PeriodicWorkRequest.Builder(StoreUpdateWorker::class.java, 6, java.util.concurrent.TimeUnit.HOURS)
                 .addTag(WORKER_TAG)
                 .setConstraints(androidx.work.Constraints.Builder()
@@ -124,7 +104,6 @@ class StoreUpdateWorker(context: Context, params: WorkerParameters) : CoroutineW
                     .build())
                 .setBackoffCriteria(androidx.work.BackoffPolicy.EXPONENTIAL, 30, java.util.concurrent.TimeUnit.MINUTES)
                 .build()
-            
             workManager.enqueueUniquePeriodicWork(WORK_NAME, ExistingPeriodicWorkPolicy.KEEP, request)
         }
 
