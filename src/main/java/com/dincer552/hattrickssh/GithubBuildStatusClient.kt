@@ -26,7 +26,7 @@ data class GithubBuildStatus(
     val updatedAt: String,
     val jobs: List<GithubBuildJob>
 ) {
-    val isActive: Boolean get() = status == "queued" || status == "in_progress"
+    val isActive: Boolean get() = status == "queued" || status == "pending" || status == "in_progress"
 
     val statusLabel: String
         get() = when (status) {
