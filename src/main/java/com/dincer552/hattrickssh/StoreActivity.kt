@@ -313,6 +313,7 @@ private fun StoreScreen(
             updateQueueIds = updateQueueIds.drop(1)
             writeManualQueueIds(context, updateQueueIds)
             startNextQueuedDownload()
+            finishInstallQueueIfIdle()
             return
         }
         if (StoreUpdateNotifications.hasReadyVersion(context, app.id, app.versionCode.toLong())) {
@@ -502,6 +503,7 @@ private fun StoreScreen(
                 validatingAppId = null
                 activeUpdateAppId = null
                 startNextQueuedDownload()
+                finishInstallQueueIfIdle()
                 break
             }
             downloadPercent = snapshot.second
@@ -525,6 +527,7 @@ private fun StoreScreen(
                             validatingAppId = null
                             activeUpdateAppId = null
                             startNextQueuedDownload()
+                            finishInstallQueueIfIdle()
                             return@launch
                         }
                         StoreUpdateTrace.event(
@@ -558,6 +561,7 @@ private fun StoreScreen(
                             activeUpdateAppId = null
                             StoreUpdateTrace.endSession(context, "error", validationError ?: "validate failed")
                             startNextQueuedDownload()
+                            finishInstallQueueIfIdle()
                         } else {
                             StoreUpdateTrace.event(
                                 context, "validate", "ok", "Package ready",
@@ -589,6 +593,7 @@ private fun StoreScreen(
                     validatingAppId = null
                     activeUpdateAppId = null
                     startNextQueuedDownload()
+                    finishInstallQueueIfIdle()
                     break
                 }
                 else -> delay(450)
