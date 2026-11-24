@@ -219,11 +219,15 @@ private fun StoreScreen(
         }
     }
 
+    fun setInstallQueueActive(active: Boolean) {
+        installQueueActive = active
+        manualQueuePrefs.edit().putBoolean(MANUAL_INSTALL_QUEUE_ACTIVE, active).apply()
+    }
+
     val installPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
         val uri = installUri
-        val readyAppId = readyInstallAppId
         if (uri != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             context.packageManager.canRequestPackageInstalls()
         ) {
@@ -241,17 +245,18 @@ private fun StoreScreen(
                 updatePhase = null
                 activeUpdateAppId = null
                 readyInstallAppId = null
+                setInstallQueueActive(false)
             } else {
                 // Keep the validated APK until Android reports that installation succeeded.
             }
         } else if (uri != null) {
             installError = "Kurulum izni verilmedi. Ayarlar → bilinen kaynaklar: My App Store açın."
-            readyAppId?.let { /* Keep the APK ready for retry. */ }
             installingAppId = null
             manualQueuePrefs.edit().remove(MANUAL_INSTALLING_APP_ID).apply()
             readyInstallAppId = null
             updatePhase = null
             activeUpdateAppId = null
+            setInstallQueueActive(false)
         }
     }
 
@@ -279,8 +284,17 @@ private fun StoreScreen(
                 manualQueuePrefs.edit().remove(MANUAL_INSTALLING_APP_ID).apply()
                 updatePhase = null
                 readyInstallAppId = null
+                setInstallQueueActive(false)
             }
         }
+    }
+
+    fun launchNextQueuedInstallIfForeground() {
+        if (!activityResumed || !installQueueActive || installingAppId != null || apps.isEmpty()) return
+        val nextReadyId = readyOrder.firstOrNull() ?: return
+        val nextApp = apps.firstOrNull { it.id == nextReadyId } ?: return
+        val nextUri = StoreUpdateNotifications.installUri(context, nextReadyId) ?: return
+        launchReadyInstall(nextApp, nextUri)
     }
 
     fun startNextQueuedDownload() {
@@ -304,9 +318,7 @@ private fun StoreScreen(
         writeManualQueueIds(context, updateQueueIds)
         downloadingApp = app
         activeDownloadAppId = app.id
-        activeUpdateAppId = app.id
         downloadPercent = 0
-        updatePhase = "indiriliyor"
         StoreUpdateTrace.startSession(
             context,
             appId = app.id,
@@ -346,8 +358,7 @@ private fun StoreScreen(
             if (downloadId != null && activeDownloadAppId != null) {
                 downloadingApp = apps.firstOrNull { it.id == activeDownloadAppId }
                 if (downloadingApp != null) {
-                    activeUpdateAppId = activeDownloadAppId
-                    updatePhase = "indiriliyor"
+                    activeDownloadAppId = activeDownloadAppId
                 }
             } else {
                 startNextQueuedDownload()
