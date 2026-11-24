@@ -513,6 +513,7 @@ private fun StoreScreen(
                             updatePhase = null
                             activeUpdateAppId = null
                             StoreUpdateTrace.endSession(context, "error", validationError ?: "validate failed")
+                            activeUpdateAppId = null
                             startNextQueuedDownload()
                         } else {
                             StoreUpdateTrace.event(
@@ -603,6 +604,7 @@ private fun StoreScreen(
                         context = context,
                         busy = false,
                         isUpdating = activeDownloadAppId == app.id && downloadId != null,
+                        isValidating = activeUpdateAppId == app.id && updatePhase == "dogrulaniyor",
                         isQueued = updateQueueIds.contains(app.id),
                         queuePosition = updateQueueIds.indexOf(app.id) + 1,
                         isReady = app.release?.let {
@@ -694,6 +696,7 @@ private fun StoreAppCard(
     context: Context,
     busy: Boolean,
     isUpdating: Boolean = false,
+    isValidating: Boolean = false,
     isQueued: Boolean = false,
     queuePosition: Int = 0,
     isReady: Boolean = false,
@@ -709,6 +712,7 @@ private fun StoreAppCard(
     val packageState = resolveStorePackageState(installedCode, release?.versionCode?.toLong())
     val status = when {
         isInstalling -> "Kurulum onayı bekleniyor"
+        isValidating -> "Paket kontrol ediliyor…"
         isUpdating -> "İndiriliyor • $downloadPercent%"
         isQueued -> "Sırada • $queuePosition"
         isReady -> "Kurulmaya hazır"
@@ -736,18 +740,19 @@ private fun StoreAppCard(
                 Text(release?.versionName ?: "Sürüm bekleniyor", color = StoreMuted, fontSize = 10.sp)
                 Text(
                     status,
-                    color = if (isUpdating || isReady || isInstalling || isQueued ||
+                    color = if (isUpdating || isValidating || isReady || isInstalling || isQueued ||
                         packageState == StorePackageState.UPDATE_AVAILABLE || packageState == StorePackageState.UP_TO_DATE
                     ) StoreGreen else StoreMuted,
                     fontSize = 10.sp
                 )
             }
             if (release != null) {
-                val buttonEnabled = !busy && !isUpdating && !isQueued && !isInstalling &&
+                val buttonEnabled = !busy && !isUpdating && !isValidating && !isQueued && !isInstalling &&
                     (isReady || isFirstReady && packageState != StorePackageState.UP_TO_DATE) &&
                     (!isReady || isFirstReady)
                 val buttonLabel = when {
                     isInstalling -> "KURULUM BEKLENİYOR…"
+                    isValidating -> "PAKET KONTROL EDİLİYOR…"
                     isUpdating -> "İNDİRİLİYOR • $downloadPercent%"
                     isQueued -> "SIRADA • $queuePosition"
                     isReady -> "KUR • ${release.versionName}"
