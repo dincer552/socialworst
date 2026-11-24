@@ -14,7 +14,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -30,6 +32,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -60,12 +63,37 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.security.MessageDigest
+import org.json.JSONArray
+import org.json.JSONObject
 import androidx.work.WorkManager
 
 private val StoreBackground = Color(0xFF080D12)
 private val StorePanel = Color(0xFF121B24)
 private val StoreGreen = Color(0xFF38D98A)
 private val StoreMuted = Color(0xFF91A1B2)
+
+private const val MANUAL_QUEUE_PREFS = "store_manual_update_queue"
+private const val MANUAL_QUEUE_IDS = "queue_ids"
+private const val MANUAL_ACTIVE_DOWNLOAD_ID = "active_download_id"
+private const val MANUAL_ACTIVE_APP_ID = "active_app_id"
+private const val MANUAL_INSTALLING_APP_ID = "installing_app_id"
+
+private fun readManualQueueIds(context: Context): List<String> {
+    val prefs = context.getSharedPreferences(MANUAL_QUEUE_PREFS, Context.MODE_PRIVATE)
+    return try {
+        val array = JSONArray(prefs.getString(MANUAL_QUEUE_IDS, "[]") ?: "[]")
+        (0 until array.length()).mapNotNull { array.optString(it).takeIf(String::isNotBlank) }
+    } catch (_: Exception) {
+        emptyList()
+    }
+}
+
+private fun writeManualQueueIds(context: Context, ids: List<String>) {
+    val array = JSONArray()
+    ids.distinct().forEach(array::put)
+    context.getSharedPreferences(MANUAL_QUEUE_PREFS, Context.MODE_PRIVATE)
+        .edit().putString(MANUAL_QUEUE_IDS, array.toString()).apply()
+}
 
 class StoreActivity : ComponentActivity() {
     private val installRequestState = mutableStateOf<Pair<String, Int>?>(null)
@@ -125,11 +153,24 @@ private fun StoreScreen(
     var catalogRevision by remember { mutableIntStateOf(0) }
     var loading by remember { mutableStateOf(false) }
     var loadError by remember { mutableStateOf<String?>(null) }
-    var downloadId by remember { mutableStateOf<Long?>(null) }
+    val manualQueuePrefs = remember {
+        context.getSharedPreferences(MANUAL_QUEUE_PREFS, Context.MODE_PRIVATE)
+    }
+    var updateQueueIds by remember { mutableStateOf(readManualQueueIds(context)) }
+    var downloadId by remember {
+        mutableStateOf(manualQueuePrefs.getLong(MANUAL_ACTIVE_DOWNLOAD_ID, -1L).takeIf { it > 0L })
+    }
+    var activeDownloadAppId by remember {
+        mutableStateOf(manualQueuePrefs.getString(MANUAL_ACTIVE_APP_ID, null))
+    }
     var downloadingApp by remember { mutableStateOf<StoreAppListing?>(null) }
     var downloadPercent by remember { mutableIntStateOf(0) }
     var updatePhase by remember { mutableStateOf<String?>(null) }
     var activeUpdateAppId by remember { mutableStateOf<String?>(null) }
+    var readyOrder by remember { mutableStateOf(StoreUpdateNotifications.readyAppIds(context)) }
+    var installingAppId by remember {
+        mutableStateOf(manualQueuePrefs.getString(MANUAL_INSTALLING_APP_ID, null))
+    }
     var installUri by remember { mutableStateOf<Uri?>(null) }
     var installPackageName by remember { mutableStateOf<String?>(null) }
     var readyInstallAppId by remember { mutableStateOf<String?>(null) }
@@ -182,22 +223,153 @@ private fun StoreScreen(
                 updatePhase = null
                 activeUpdateAppId = null
             } else {
-                readyAppId?.let { StoreUpdateNotifications.removeReady(context, it) }
-                readyInstallAppId = null
+                // Keep the validated APK until Android reports that installation succeeded.
             }
         } else if (uri != null) {
             installError = "Kurulum izni verilmedi. Ayarlar → bilinen kaynaklar: My App Store açın."
-            readyAppId?.let { StoreUpdateNotifications.removeReady(context, it) }
+            readyAppId?.let { /* Keep the APK ready for retry. */ }
+            installingAppId = null
+            manualQueuePrefs.edit().remove(MANUAL_INSTALLING_APP_ID).apply()
             readyInstallAppId = null
             updatePhase = null
             activeUpdateAppId = null
         }
     }
 
+    fun launchReadyInstall(app: StoreAppListing, uri: Uri) {
+        if (installingAppId != null) return
+        installError = null
+        installUri = uri
+        installPackageName = app.packageName
+        readyInstallAppId = app.id
+        installingAppId = app.id
+        manualQueuePrefs.edit().putString(MANUAL_INSTALLING_APP_ID, app.id).apply()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            !context.packageManager.canRequestPackageInstalls()
+        ) {
+            updatePhase = "izin"
+            installPermissionLauncher.launch(
+                Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
+            )
+        } else {
+            updatePhase = "kuruluyor"
+            val error = launchStoreInstallOrUpdate(context, uri, app.packageName, app.versionCode.toLong())
+            if (error != null) {
+                installError = error
+                installingAppId = null
+                manualQueuePrefs.edit().remove(MANUAL_INSTALLING_APP_ID).apply()
+                updatePhase = null
+                readyInstallAppId = null
+            }
+        }
+    }
+
+    fun startNextQueuedDownload() {
+        if (downloadId != null || downloadingApp != null || apps.isEmpty()) return
+        val nextId = updateQueueIds.firstOrNull() ?: return
+        val app = apps.firstOrNull { it.id == nextId }
+        if (app == null || app.release == null) {
+            updateQueueIds = updateQueueIds.drop(1)
+            writeManualQueueIds(context, updateQueueIds)
+            startNextQueuedDownload()
+            return
+        }
+        if (StoreUpdateNotifications.hasReadyVersion(context, app.id, app.versionCode.toLong())) {
+            readyOrder = (readyOrder + app.id).distinct()
+            updateQueueIds = updateQueueIds.drop(1)
+            writeManualQueueIds(context, updateQueueIds)
+            startNextQueuedDownload()
+            return
+        }
+        updateQueueIds = updateQueueIds.drop(1)
+        writeManualQueueIds(context, updateQueueIds)
+        downloadingApp = app
+        activeDownloadAppId = app.id
+        activeUpdateAppId = app.id
+        downloadPercent = 0
+        updatePhase = "indiriliyor"
+        StoreUpdateTrace.startSession(
+            context,
+            appId = app.id,
+            packageName = app.packageName,
+            versionName = app.versionName,
+            versionCode = app.versionCode.toLong(),
+            reason = "user_queue"
+        )
+        val request = DownloadManager.Request(Uri.parse(app.downloadUrl))
+            .setTitle("${app.name} güncelleniyor")
+            .setDescription("${app.versionName} • Sıradaki uygulama")
+            .setMimeType("application/vnd.android.package-archive")
+            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            .setAllowedOverMetered(true)
+            .setAllowedOverRoaming(false)
+            .setDestinationInExternalFilesDir(
+                context,
+                android.os.Environment.DIRECTORY_DOWNLOADS,
+                "${app.id}-${app.versionCode}.apk"
+            )
+        val enqueued = (context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
+        downloadId = enqueued
+        manualQueuePrefs.edit()
+            .putLong(MANUAL_ACTIVE_DOWNLOAD_ID, enqueued)
+            .putString(MANUAL_ACTIVE_APP_ID, app.id)
+            .apply()
+        StoreUpdateTrace.event(
+            context, "download", "enqueued", "downloadId=$enqueued",
+            code = enqueued.toInt()
+        )
+    }
+
+    LaunchedEffect(apps) {
+        if (apps.isNotEmpty()) {
+            readyOrder = StoreUpdateNotifications.readyAppIds(context)
+                .filter { id -> apps.any { it.id == id } }
+            if (downloadId != null && activeDownloadAppId != null) {
+                downloadingApp = apps.firstOrNull { it.id == activeDownloadAppId }
+                if (downloadingApp != null) {
+                    activeUpdateAppId = activeDownloadAppId
+                    updatePhase = "indiriliyor"
+                }
+            } else {
+                startNextQueuedDownload()
+            }
+        }
+    }
+
     LaunchedEffect(statusRefreshKey) {
-        if (statusRefreshKey > 0 && updatePhase == "kuruluyor") {
-            updatePhase = null
-            activeUpdateAppId = null
+        if (statusRefreshKey > 0 && apps.isNotEmpty()) {
+            val completedId = installingAppId
+            if (completedId != null) {
+                val installedApp = apps.firstOrNull { it.id == completedId }
+                val installedVersion = installedApp?.let { getInstalledVersionCode(context, it.packageName) }
+                if (installedApp != null && installedVersion != null &&
+                    installedVersion >= installedApp.versionCode.toLong()
+                ) {
+                    StoreUpdateNotifications.removeReady(context, completedId)
+                    readyOrder = readyOrder.filterNot { it == completedId }
+                    Toast.makeText(context, "${installedApp.name} güncellendi", Toast.LENGTH_SHORT).show()
+                    val nextReadyId = readyOrder.firstOrNull()
+                    val nextApp = apps.firstOrNull { it.id == nextReadyId }
+                    val nextUri = nextReadyId?.let { StoreUpdateNotifications.installUri(context, it) }
+                    installingAppId = null
+                    manualQueuePrefs.edit().remove(MANUAL_INSTALLING_APP_ID).apply()
+                    readyInstallAppId = null
+                    updatePhase = null
+                    if (nextApp != null && nextUri != null) {
+                        launchReadyInstall(nextApp, nextUri)
+                    }
+                } else {
+                    // The user may have cancelled the Android confirmation screen.
+                    installingAppId = null
+                    manualQueuePrefs.edit().remove(MANUAL_INSTALLING_APP_ID).apply()
+                    readyInstallAppId = null
+                    updatePhase = null
+                }
+            } else if (updatePhase == "kuruluyor") {
+                updatePhase = null
+                activeUpdateAppId = null
+            }
+            startNextQueuedDownload()
         }
     }
 
@@ -251,8 +423,9 @@ private fun StoreScreen(
         }
     }
 
-    LaunchedEffect(downloadId) {
+    LaunchedEffect(downloadId, downloadingApp?.id) {
         val id = downloadId ?: return@LaunchedEffect
+        val activeApp = downloadingApp ?: return@LaunchedEffect
         while (true) {
             val snapshot = withContext(Dispatchers.IO) {
                 val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
@@ -269,18 +442,29 @@ private fun StoreScreen(
                 installError = "İndirme durumu okunamadı."
                 downloadId = null
                 downloadingApp = null
+                activeDownloadAppId = null
+                manualQueuePrefs.edit()
+                    .remove(MANUAL_ACTIVE_DOWNLOAD_ID)
+                    .remove(MANUAL_ACTIVE_APP_ID)
+                    .apply()
                 updatePhase = null
                 activeUpdateAppId = null
+                startNextQueuedDownload()
                 break
             }
             downloadPercent = snapshot.second
             when (snapshot.first) {
                 DownloadManager.STATUS_SUCCESSFUL -> {
                     val uri = snapshot.third
-                    val app = downloadingApp
+                    val app = activeApp
                     val finishedId = id
                     downloadId = null
                     downloadingApp = null
+                    manualQueuePrefs.edit()
+                        .remove(MANUAL_ACTIVE_DOWNLOAD_ID)
+                        .remove(MANUAL_ACTIVE_APP_ID)
+                        .apply()
+                    activeDownloadAppId = null
                     scope.launch {
                         if (uri == null || app == null) {
                             installError = "İndirilen paket bulunamadı."
@@ -288,6 +472,7 @@ private fun StoreScreen(
                             StoreUpdateTrace.endSession(context, "error", "missing uri")
                             updatePhase = null
                             activeUpdateAppId = null
+                            startNextQueuedDownload()
                             return@launch
                         }
                         StoreUpdateTrace.event(
@@ -319,39 +504,20 @@ private fun StoreScreen(
                             StoreUpdateTrace.endSession(context, "error", "validate failed")
                             updatePhase = null
                             activeUpdateAppId = null
+                            StoreUpdateTrace.endSession(context, "error", validationError ?: "validate failed")
+                            startNextQueuedDownload()
                         } else {
                             StoreUpdateTrace.event(
                                 context, "validate", "ok", "Package ready",
                                 extra = mapOf("durationMs" to validateMs)
                             )
-                            installUri = stagedUri
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-                                !context.packageManager.canRequestPackageInstalls()
-                            ) {
-                                updatePhase = "izin"
-                                StoreUpdateTrace.event(context, "permission", "required", "REQUEST_INSTALL_PACKAGES")
-                                installPermissionLauncher.launch(
-                                    Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
-                                )
-                            } else {
-                                updatePhase = "kuruluyor"
-                                StoreUpdateTrace.event(context, "install", "start", "Android standart APK kurulum ekranı")
-                                val err = launchStoreInstallOrUpdate(
-                                    context,
-                                    stagedUri,
-                                    app.packageName,
-                                    app.release?.versionCode?.toLong()
-                                )
-                                if (err != null) {
-                                    installError = err
-                                    StoreUpdateTrace.event(context, "install", "error", err)
-                                    StoreUpdateTrace.endSession(context, "error", err)
-                                    updatePhase = null
-                                    activeUpdateAppId = null
-                                } else {
-                                    StoreUpdateTrace.event(context, "install", "session_started", "Waiting for user confirmation in Android installer")
-                                }
-                            }
+                            StoreUpdateNotifications.saveReady(context, app, stagedUri)
+                            readyOrder = (readyOrder + app.id).distinct()
+                            StoreUpdateTrace.event(context, "ready_apk", "ok", "Validated APK is ready for user-approved installation")
+                            StoreUpdateTrace.endSession(context, "ready", "APK prepared; next queued download will start")
+                            updatePhase = null
+                            activeUpdateAppId = null
+                            startNextQueuedDownload()
                         }
                     }
                     break
@@ -362,8 +528,14 @@ private fun StoreScreen(
                     StoreUpdateTrace.endSession(context, "error", "download failed")
                     downloadId = null
                     downloadingApp = null
+                    activeDownloadAppId = null
+                    manualQueuePrefs.edit()
+                        .remove(MANUAL_ACTIVE_DOWNLOAD_ID)
+                        .remove(MANUAL_ACTIVE_APP_ID)
+                        .apply()
                     updatePhase = null
                     activeUpdateAppId = null
+                    startNextQueuedDownload()
                     break
                 }
                 else -> delay(450)
@@ -413,21 +585,6 @@ private fun StoreScreen(
             }
             loadError?.let { Text(it, color = Color(0xFFFF8A80), fontSize = 12.sp) }
             installError?.let { Text(it, color = Color(0xFFFF8A80), fontSize = 12.sp) }
-            val phaseLabel = when (updatePhase) {
-                "indiriliyor" -> "${downloadingApp?.name ?: "Uygulama"} güncelleniyor • $downloadPercent%"
-                "dogrulaniyor" -> "Paket kontrol ediliyor (birkaç saniye sürebilir)…"
-                "izin" -> "Kurulum izni gerekli — bir kez izin verin"
-                "kuruluyor" -> "Android kurulum onayı açılıyor…"
-                else -> null
-            }
-            if (phaseLabel != null) {
-                Text(phaseLabel, color = StoreGreen, fontSize = 12.sp)
-                if (updatePhase == "indiriliyor") {
-                    LinearProgressIndicator(progress = { downloadPercent / 100f }, modifier = Modifier.fillMaxWidth())
-                } else if (updatePhase == "dogrulaniyor" || updatePhase == "kuruluyor") {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                }
-            }
             LazyColumn(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -436,100 +593,42 @@ private fun StoreScreen(
                     StoreAppCard(
                         app = app,
                         context = context,
-                        busy = updatePhase != null,
-                        isUpdating = activeUpdateAppId == app.id && updatePhase != null,
+                        busy = false,
+                        isUpdating = activeDownloadAppId == app.id && downloadId != null,
+                        isQueued = updateQueueIds.contains(app.id),
+                        queuePosition = updateQueueIds.indexOf(app.id) + 1,
+                        isReady = app.release?.let {
+                            StoreUpdateNotifications.hasReadyVersion(context, app.id, it.versionCode.toLong())
+                        } ?: false,
+                        isInstalling = installingAppId == app.id,
+                        isFirstReady = readyOrder.firstOrNull() == app.id || readyOrder.isEmpty(),
+                        downloadPercent = if (activeDownloadAppId == app.id) downloadPercent else 0,
                         refreshKey = "$catalogRevision:$statusRefreshKey",
                         onOpenDetails = { selectedApp = app },
                         onInstall = {
                             installError = null
-                            activeUpdateAppId = app.id
-                            val versionCode = app.release?.versionCode?.toLong()
-                            StoreUpdateTrace.startSession(
-                                context,
-                                appId = app.id,
-                                packageName = app.packageName,
-                                versionName = app.release?.versionName,
-                                versionCode = versionCode,
-                                reason = "user_tap"
-                            )
-                            val readyUri = if (versionCode != null &&
-                                StoreUpdateNotifications.hasReadyVersion(context, app.id, versionCode)
+                            val releaseCode = app.release?.versionCode?.toLong()
+                            val readyUri = if (releaseCode != null &&
+                                StoreUpdateNotifications.hasReadyVersion(context, app.id, releaseCode)
                             ) StoreUpdateNotifications.installUri(context, app.id) else null
-                            if (readyUri != null) {
-                                StoreUpdateTrace.event(context, "ready_apk", "ok", "Using pre-downloaded APK")
-                                updatePhase = "kuruluyor"
-                                scope.launch {
-                                    try {
-                                        val staged = withContext(Dispatchers.IO) {
-                                            createInstallableApkUri(context, readyUri)
-                                        }
-                                        installUri = staged
-                                        installPackageName = app.packageName
-                                        readyInstallAppId = app.id
-                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-                                            !context.packageManager.canRequestPackageInstalls()
-                                        ) {
-                                            updatePhase = "izin"
-                                            installPermissionLauncher.launch(
-                                                Intent(
-                                                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                                                    Uri.parse("package:${context.packageName}")
-                                                )
-                                            )
-                                        } else {
-                                            StoreUpdateTrace.event(context, "install", "start", "ready apk")
-                                            val err = launchStoreInstallOrUpdate(
-                                                context, staged, app.packageName, versionCode
-                                            )
-                                            if (err != null) {
-                                                installError = err
-                                                StoreUpdateTrace.event(context, "install", "error", err)
-                                                StoreUpdateTrace.endSession(context, "error", err)
-                                                updatePhase = null
-                                                activeUpdateAppId = null
-                                            } else {
-                                                StoreUpdateNotifications.removeReady(context, app.id)
-                                                StoreUpdateTrace.event(context, "install", "session_started", "Waiting for user confirmation in Android installer")
-                                            }
-                                        }
-                                    } catch (error: Exception) {
-                                        installError = error.message ?: "Hazır güncelleme kurulamadı."
-                                        StoreUpdateNotifications.removeReady(context, app.id)
-                                        StoreUpdateTrace.event(context, "install", "error", installError ?: "")
-                                        StoreUpdateTrace.endSession(context, "error", installError ?: "")
-                                        updatePhase = null
-                                        activeUpdateAppId = null
+                            when {
+                                installingAppId != null -> Toast.makeText(
+                                    context, "Önce açık olan kurulum onayını tamamlayın.", Toast.LENGTH_SHORT
+                                ).show()
+                                readyUri != null -> {
+                                    readyOrder = (readyOrder + app.id).distinct()
+                                    if (readyOrder.firstOrNull() != app.id) {
+                                        Toast.makeText(context, "Güncellemeler sırayla kurulacak.", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        launchReadyInstall(app, readyUri)
                                     }
                                 }
-                            } else {
-                                updatePhase = "indiriliyor"
-                                downloadPercent = 0
-                                downloadingApp = app
-                                StoreUpdateTrace.event(
-                                    context, "download", "start",
-                                    "DownloadManager enqueue",
-                                    extra = mapOf("url" to app.downloadUrl)
-                                )
-                                val request = DownloadManager.Request(Uri.parse(app.downloadUrl))
-                                    .setTitle("${app.name} güncelleniyor")
-                                    .setDescription("${app.versionName} • Android onaylı kurulum")
-                                    .setMimeType("application/vnd.android.package-archive")
-                                    .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
-                                    .setAllowedOverMetered(true)
-                                    .setAllowedOverRoaming(false)
-                                    .setDestinationInExternalFilesDir(
-                                        context,
-                                        android.os.Environment.DIRECTORY_DOWNLOADS,
-                                        "${app.id}-${app.versionCode}.apk"
-                                    )
-                                val enqueued = (context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager)
-                                    .enqueue(request)
-                                downloadId = enqueued
-                                StoreUpdateTrace.event(
-                                    context, "download", "enqueued",
-                                    "downloadId=$enqueued",
-                                    code = enqueued.toInt()
-                                )
+                                activeDownloadAppId == app.id || updateQueueIds.contains(app.id) -> Unit
+                                else -> {
+                                    updateQueueIds = updateQueueIds + app.id
+                                    writeManualQueueIds(context, updateQueueIds)
+                                    startNextQueuedDownload()
+                                }
                             }
                         }
                     )
@@ -587,6 +686,12 @@ private fun StoreAppCard(
     context: Context,
     busy: Boolean,
     isUpdating: Boolean = false,
+    isQueued: Boolean = false,
+    queuePosition: Int = 0,
+    isReady: Boolean = false,
+    isInstalling: Boolean = false,
+    isFirstReady: Boolean = true,
+    downloadPercent: Int = 0,
     refreshKey: String,
     onOpenDetails: () -> Unit,
     onInstall: () -> Unit
@@ -594,11 +699,17 @@ private fun StoreAppCard(
     val installedCode = remember(app.packageName, refreshKey) { getInstalledVersionCode(context, app.packageName) }
     val release = app.release
     val packageState = resolveStorePackageState(installedCode, release?.versionCode?.toLong())
-    val status = when (packageState) {
-        StorePackageState.NOT_INSTALLED -> if (release == null) "Kurulu değil • Release bekleniyor" else "Yüklenmedi"
-        StorePackageState.INSTALLED -> "Kurulu • Sürüm bilgisi yok"
-        StorePackageState.UPDATE_AVAILABLE -> "Güncelleme mevcut"
-        StorePackageState.UP_TO_DATE -> "Yüklü • Güncel"
+    val status = when {
+        isInstalling -> "Kurulum onayı bekleniyor"
+        isUpdating -> "İndiriliyor • $downloadPercent%"
+        isQueued -> "Sırada • $queuePosition"
+        isReady -> "Kurulmaya hazır"
+        else -> when (packageState) {
+            StorePackageState.NOT_INSTALLED -> if (release == null) "Kurulu değil • Release bekleniyor" else "Yüklenmedi"
+            StorePackageState.INSTALLED -> "Kurulu • Sürüm bilgisi yok"
+            StorePackageState.UPDATE_AVAILABLE -> "Güncelleme mevcut"
+            StorePackageState.UP_TO_DATE -> "Yüklü • Güncel"
+        }
     }
     Card(
         colors = CardDefaults.cardColors(containerColor = StorePanel),
@@ -616,26 +727,54 @@ private fun StoreAppCard(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(release?.versionName ?: "Sürüm bekleniyor", color = StoreMuted, fontSize = 10.sp)
                 Text(
-                    if (isUpdating) "Güncelleniyor…" else status,
-                    color = if (isUpdating || packageState == StorePackageState.UPDATE_AVAILABLE || packageState == StorePackageState.UP_TO_DATE) StoreGreen else StoreMuted,
+                    status,
+                    color = if (isUpdating || isReady || isInstalling || isQueued ||
+                        packageState == StorePackageState.UPDATE_AVAILABLE || packageState == StorePackageState.UP_TO_DATE
+                    ) StoreGreen else StoreMuted,
                     fontSize = 10.sp
                 )
             }
             if (release != null) {
-                Button(
-                    onClick = onInstall,
-                    enabled = !busy && packageState != StorePackageState.UP_TO_DATE,
-                    modifier = Modifier.fillMaxWidth().height(42.dp),
-                    shape = RoundedCornerShape(10.dp)
+                val buttonEnabled = !busy && !isUpdating && !isQueued && !isInstalling &&
+                    (isReady || isFirstReady && packageState != StorePackageState.UP_TO_DATE) &&
+                    (!isReady || isFirstReady)
+                val buttonLabel = when {
+                    isInstalling -> "KURULUM BEKLENİYOR…"
+                    isUpdating -> "İNDİRİLİYOR • $downloadPercent%"
+                    isQueued -> "SIRADA • $queuePosition"
+                    isReady -> "KUR • ${release.versionName}"
+                    packageState == StorePackageState.NOT_INSTALLED -> "YÜKLE"
+                    packageState == StorePackageState.INSTALLED -> "KURULU"
+                    packageState == StorePackageState.UPDATE_AVAILABLE -> "GÜNCELLE • ${release.versionName}"
+                    else -> "ZATEN GÜNCEL"
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(42.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF2E3943))
+                        .clickable(enabled = buttonEnabled, onClick = onInstall),
+                    contentAlignment = Alignment.Center
                 ) {
+                    if (isUpdating) {
+                        Box(
+                            Modifier
+                                .align(Alignment.CenterStart)
+                                .fillMaxHeight()
+                                .fillMaxWidth((downloadPercent.coerceIn(0, 100) / 100f))
+                                .background(StoreGreen)
+                        )
+                    } else if (isReady && buttonEnabled) {
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .background(StoreGreen)
+                        )
+                    }
                     Text(
-                        when {
-                            isUpdating -> "GÜNCELLENİYOR…"
-                            packageState == StorePackageState.NOT_INSTALLED -> "YÜKLE"
-                            packageState == StorePackageState.INSTALLED -> "KURULU"
-                            packageState == StorePackageState.UPDATE_AVAILABLE -> "GÜNCELLE • ${release.versionName}"
-                            else -> "ZATEN GÜNCEL"
-                        },
+                        buttonLabel,
+                        color = if (isUpdating || isReady && buttonEnabled) Color(0xFF07130D) else Color.White,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
                     )
