@@ -11,6 +11,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import android.app.DownloadManager
+import org.json.JSONArray
 import org.json.JSONObject
 import java.security.MessageDigest
 
