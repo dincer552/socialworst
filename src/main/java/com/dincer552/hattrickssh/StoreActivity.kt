@@ -603,6 +603,30 @@ private fun StoreAppCard(
 
 @Composable
 private fun StoreAppDetailsDialog(app: StoreAppListing, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    var buildStatus by remember(app.repository) { mutableStateOf<GithubBuildStatus?>(null) }
+    var buildLoading by remember(app.repository) { mutableStateOf(true) }
+    var buildError by remember(app.repository) { mutableStateOf<String?>(null) }
+    var refreshBuild by remember(app.repository) { mutableIntStateOf(0) }
+
+    LaunchedEffect(app.repository, refreshBuild) {
+        buildLoading = true
+        buildError = null
+        try {
+            do {
+                val latest = GithubBuildStatusClient.fetchLatest(app.repository)
+                buildStatus = latest
+                if (latest?.isActive == true) {
+                    delay(12_000)
+                }
+            } while (buildStatus?.isActive == true)
+        } catch (error: Exception) {
+            buildError = error.message ?: "GitHub build bilgisi alınamadı."
+        } finally {
+            buildLoading = false
+        }
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Row(verticalAlignment = Alignment.CenterVertically) {
@@ -610,12 +634,59 @@ private fun StoreAppDetailsDialog(app: StoreAppListing, onDismiss: () -> Unit) {
             Text(app.name, modifier = Modifier.padding(start = 10.dp), fontWeight = FontWeight.Bold)
         } },
         text = {
-            Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Column(Modifier.fillMaxWidth().heightIn(max = 500.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 Text(app.description, color = StoreMuted, fontSize = 13.sp)
                 Text("Uygulama bilgileri", color = StoreGreen, fontWeight = FontWeight.Bold)
                 Text("Paket adı: ${app.packageName}", fontSize = 11.sp)
                 Text("GitHub deposu: ${app.repository}", fontSize = 11.sp)
                 Text("Güncel sürüm: ${app.release?.versionName ?: "Bilinmiyor"}", fontSize = 11.sp)
+                Spacer(Modifier.height(5.dp))
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("GitHub build durumu", color = StoreGreen, fontWeight = FontWeight.Bold)
+                    TextButton(onClick = { refreshBuild++ }, enabled = !buildLoading) {
+                        Text("YENİLE", fontSize = 10.sp)
+                    }
+                }
+                if (buildLoading && buildStatus == null) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                    Text("GitHub Actions kontrol ediliyor…", color = StoreMuted, fontSize = 11.sp)
+                }
+                buildError?.let {
+                    Text(it, color = Color(0xFFFF8A80), fontSize = 11.sp)
+                }
+                buildStatus?.let { build ->
+                    val statusColor = when {
+                        build.status == "completed" && build.conclusion == "success" -> StoreGreen
+                        build.status == "completed" && build.conclusion != "success" -> Color(0xFFFF8A80)
+                        else -> Color(0xFFFFC857)
+                    }
+                    Text(build.statusLabel, color = statusColor, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text(build.workflowName, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Build #${build.id} • ${build.branch} • ${build.event}", color = StoreMuted, fontSize = 10.sp)
+                    Text(build.displayTitle, color = StoreMuted, fontSize = 11.sp)
+                    Text("Başlangıç: ${build.createdAt.replace("T", " ").removeSuffix("Z")} UTC", color = StoreMuted, fontSize = 10.sp)
+                    if (build.updatedAt != build.createdAt) {
+                        Text("Son güncelleme: ${build.updatedAt.replace("T", " ").removeSuffix("Z")} UTC", color = StoreMuted, fontSize = 10.sp)
+                    }
+                    build.jobs.filter { it.failedSteps.isNotEmpty() }.forEach { job ->
+                        Text("Hatalı görev: ${job.name}", color = Color(0xFFFF8A80), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        job.failedSteps.forEach { step ->
+                            Text("• ${step}", color = Color(0xFFFF8A80), fontSize = 10.sp)
+                        }
+                    }
+                    TextButton(onClick = {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(build.htmlUrl)))
+                    }) {
+                        Text("GitHub'da build ayrıntılarını aç")
+                    }
+                    if (build.isActive) {
+                        Text("Build çalışırken durum otomatik olarak yenilenir.", color = StoreMuted, fontSize = 10.sp)
+                    }
+                }
+                if (!buildLoading && buildStatus == null && buildError == null) {
+                    Text("Bu deponun main dalında henüz GitHub Actions build kaydı bulunamadı.", color = StoreMuted, fontSize = 11.sp)
+                }
+                Spacer(Modifier.height(5.dp))
                 Text("Sürüm geçmişi", color = StoreGreen, fontWeight = FontWeight.Bold)
                 if (app.updateHistory.isEmpty()) Text("Henüz sürüm geçmişi bulunamadı.", color = StoreMuted, fontSize = 11.sp)
                 app.updateHistory.forEach { item ->
