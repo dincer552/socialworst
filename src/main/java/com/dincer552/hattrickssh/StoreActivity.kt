@@ -380,22 +380,24 @@ private fun StoreScreen(
                     StoreUpdateNotifications.removeReady(context, completedId)
                     readyOrder = readyOrder.filterNot { it == completedId }
                     Toast.makeText(context, "${installedApp.name} güncellendi", Toast.LENGTH_SHORT).show()
-                    val nextReadyId = readyOrder.firstOrNull()
-                    val nextApp = apps.firstOrNull { it.id == nextReadyId }
-                    val nextUri = nextReadyId?.let { StoreUpdateNotifications.installUri(context, it) }
                     installingAppId = null
                     manualQueuePrefs.edit().remove(MANUAL_INSTALLING_APP_ID).apply()
                     readyInstallAppId = null
                     updatePhase = null
-                    if (nextApp != null && nextUri != null) {
-                        launchReadyInstall(nextApp, nextUri)
+                    activeUpdateAppId = null
+                    if (readyOrder.isEmpty() && updateQueueIds.isEmpty() &&
+                        downloadId == null && downloadingApp == null && validatingAppId == null
+                    ) {
+                        setInstallQueueActive(false)
                     }
                 } else {
-                    // The user may have cancelled the Android confirmation screen.
+                    // Cancellation pauses the install chain; the validated APK stays ready for retry.
                     installingAppId = null
                     manualQueuePrefs.edit().remove(MANUAL_INSTALLING_APP_ID).apply()
                     readyInstallAppId = null
                     updatePhase = null
+                    activeUpdateAppId = null
+                    setInstallQueueActive(false)
                 }
             } else if (updatePhase == "kuruluyor") {
                 updatePhase = null
