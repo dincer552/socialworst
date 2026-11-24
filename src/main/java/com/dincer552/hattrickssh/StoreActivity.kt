@@ -487,7 +487,7 @@ private fun StoreScreen(
                     .remove(MANUAL_ACTIVE_DOWNLOAD_ID)
                     .remove(MANUAL_ACTIVE_APP_ID)
                     .apply()
-                updatePhase = null
+                validatingAppId = null
                 activeUpdateAppId = null
                 startNextQueuedDownload()
                 break
@@ -510,7 +510,7 @@ private fun StoreScreen(
                             installError = "İndirilen paket bulunamadı."
                             StoreUpdateTrace.event(context, "download", "error", "Downloaded file URI missing")
                             StoreUpdateTrace.endSession(context, "error", "missing uri")
-                            updatePhase = null
+                            validatingAppId = null
                             activeUpdateAppId = null
                             startNextQueuedDownload()
                             return@launch
@@ -519,7 +519,8 @@ private fun StoreScreen(
                             context, "download", "ok", "Download finished",
                             extra = mapOf("downloadId" to finishedId)
                         )
-                        updatePhase = "dogrulaniyor"
+                        validatingAppId = app.id
+                        activeUpdateAppId = app.id
                         installPackageName = app.packageName
                         val stageStarted = System.currentTimeMillis()
                         StoreUpdateTrace.event(context, "validate", "start", "Stage + identity + sha256")
@@ -541,7 +542,7 @@ private fun StoreScreen(
                                 context, "validate", "error", validationError ?: "unknown",
                                 extra = mapOf("durationMs" to validateMs)
                             )
-                            updatePhase = null
+                            validatingAppId = null
                             activeUpdateAppId = null
                             StoreUpdateTrace.endSession(context, "error", validationError ?: "validate failed")
                             startNextQueuedDownload()
@@ -554,9 +555,10 @@ private fun StoreScreen(
                             readyOrder = (readyOrder + app.id).distinct()
                             StoreUpdateTrace.event(context, "ready_apk", "ok", "Validated APK is ready for user-approved installation")
                             StoreUpdateTrace.endSession(context, "ready", "APK prepared; next queued download will start")
-                            updatePhase = null
+                            validatingAppId = null
                             activeUpdateAppId = null
                             startNextQueuedDownload()
+                            launchNextQueuedInstallIfForeground()
                         }
                     }
                     break
@@ -572,7 +574,7 @@ private fun StoreScreen(
                         .remove(MANUAL_ACTIVE_DOWNLOAD_ID)
                         .remove(MANUAL_ACTIVE_APP_ID)
                         .apply()
-                    updatePhase = null
+                    validatingAppId = null
                     activeUpdateAppId = null
                     startNextQueuedDownload()
                     break
