@@ -398,6 +398,8 @@ private fun StoreScreen(
                     readyInstallAppId = installAppIdFromIntent
                 } catch (error: Exception) {
                     installError = error.message ?: "APK kurulum için hazırlanamadı."
+                    installingAppId = null
+                    manualQueuePrefs.edit().remove(MANUAL_INSTALLING_APP_ID).apply()
                     updatePhase = null
                     activeUpdateAppId = null
                 }
@@ -513,7 +515,6 @@ private fun StoreScreen(
                             updatePhase = null
                             activeUpdateAppId = null
                             StoreUpdateTrace.endSession(context, "error", validationError ?: "validate failed")
-                            activeUpdateAppId = null
                             startNextQueuedDownload()
                         } else {
                             StoreUpdateTrace.event(
