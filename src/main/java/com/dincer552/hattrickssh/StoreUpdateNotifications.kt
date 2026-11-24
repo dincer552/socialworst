@@ -56,6 +56,36 @@ object StoreUpdateNotifications {
         return item.optString("packageName").takeIf { it.isNotBlank() }
     }
 
+    fun saveReady(
+        context: Context,
+        app: StoreAppListing,
+        uri: Uri
+    ) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val ready = JSONObject(prefs.getString(READY, "{}") ?: "{}")
+        ready.put(
+            app.id,
+            JSONObject()
+                .put("appId", app.id)
+                .put("name", app.name)
+                .put("packageName", app.packageName)
+                .put("versionCode", app.versionCode)
+                .put("versionName", app.versionName)
+                .put("sha256", app.release?.sha256 ?: "")
+                .put("uri", uri.toString())
+        )
+        prefs.edit().putString(READY, ready.toString()).apply()
+    }
+
+    fun readyAppIds(context: Context): List<String> {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val ready = JSONObject(prefs.getString(READY, "{}") ?: "{}")
+        val result = mutableListOf<String>()
+        val keys = ready.keys()
+        while (keys.hasNext()) result.add(keys.next())
+        return result
+    }
+
     fun removeReady(context: Context, appId: String) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val ready = JSONObject(prefs.getString(READY, "{}") ?: "{}")
