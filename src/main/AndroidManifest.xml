@@ -9,6 +9,7 @@
         <package android:name="com.dincer552.hattrickssh" />
         <package android:name="com.dincer552.dyssh" />
         <package android:name="com.dincer552.instaviewer" />
+        <package android:name="com.dincer552.tvremote" />
         <package android:name="com.dincer552.testapk" />
         <package android:name="com.dincer552.testpak2" />
     </queries>
