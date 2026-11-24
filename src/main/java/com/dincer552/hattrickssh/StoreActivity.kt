@@ -111,8 +111,9 @@ class StoreActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         window.statusBarColor = android.graphics.Color.rgb(8, 13, 18)
         window.navigationBarColor = android.graphics.Color.BLACK
-        StoreUpdateWorker.enqueuePeriodicCheck(this)
-        StoreUpdateWorker.enqueueImmediateCheck(this)
+        // Manual update downloads are now queued by the store UI. Stop the legacy
+        // parallel prefetch worker so it cannot bypass the per-app FIFO queue.
+        StoreUpdateWorker.cancelAll(this)
         captureInstallRequest(intent)
 
         setContent {
@@ -337,7 +338,7 @@ private fun StoreScreen(
     }
 
     LaunchedEffect(statusRefreshKey) {
-        if (statusRefreshKey > 0 && apps.isNotEmpty()) {
+        if (statusRefreshKey > 0 && apps.isNotEmpty() && updatePhase != "izin") {
             val completedId = installingAppId
             if (completedId != null) {
                 val installedApp = apps.firstOrNull { it.id == completedId }
