@@ -357,13 +357,15 @@ private fun StoreScreen(
                 .filter { id -> apps.any { it.id == id } }
             if (downloadId != null && activeDownloadAppId != null) {
                 downloadingApp = apps.firstOrNull { it.id == activeDownloadAppId }
-                if (downloadingApp != null) {
-                    activeDownloadAppId = activeDownloadAppId
-                }
+                // The DownloadManager request is already running; the progress effect resumes below.
             } else {
                 startNextQueuedDownload()
             }
         }
+    }
+
+    LaunchedEffect(activityResumed, readyOrder, installQueueActive, installingAppId, apps) {
+        if (activityResumed) launchNextQueuedInstallIfForeground()
     }
 
     LaunchedEffect(statusRefreshKey) {
