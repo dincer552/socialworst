@@ -297,6 +297,14 @@ private fun StoreScreen(
         launchReadyInstall(nextApp, nextUri)
     }
 
+    fun finishInstallQueueIfIdle() {
+        if (installQueueActive && readyOrder.isEmpty() && updateQueueIds.isEmpty() &&
+            downloadId == null && downloadingApp == null && validatingAppId == null && installingAppId == null
+        ) {
+            setInstallQueueActive(false)
+        }
+    }
+
     fun startNextQueuedDownload() {
         if (downloadId != null || downloadingApp != null || apps.isEmpty()) return
         val nextId = updateQueueIds.firstOrNull() ?: return
@@ -411,6 +419,7 @@ private fun StoreScreen(
         refreshCatalog()
         val installAppIdFromIntent = installRequest?.first
         if (installAppIdFromIntent != null) {
+            setInstallQueueActive(true)
             val uri = StoreUpdateNotifications.installUri(context, installAppIdFromIntent)
             if (uri != null) {
                 installUri = null
@@ -431,6 +440,8 @@ private fun StoreScreen(
                     manualQueuePrefs.edit().remove(MANUAL_INSTALLING_APP_ID).apply()
                     updatePhase = null
                     activeUpdateAppId = null
+                    setInstallQueueActive(false)
+                    finishInstallQueueIfIdle()
                 }
                 if (installUri != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
                     !context.packageManager.canRequestPackageInstalls()
@@ -453,6 +464,7 @@ private fun StoreScreen(
                             manualQueuePrefs.edit().remove(MANUAL_INSTALLING_APP_ID).apply()
                             updatePhase = null
                             activeUpdateAppId = null
+                            setInstallQueueActive(false)
                         } else {
                             // Keep the validated APK until successful installation is confirmed.
                             readyInstallAppId = installAppIdFromIntent
@@ -636,7 +648,7 @@ private fun StoreScreen(
                         context = context,
                         busy = false,
                         isUpdating = activeDownloadAppId == app.id && downloadId != null,
-                        isValidating = activeUpdateAppId == app.id && updatePhase == "dogrulaniyor",
+                        isValidating = validatingAppId == app.id,
                         isQueued = updateQueueIds.contains(app.id),
                         queuePosition = updateQueueIds.indexOf(app.id) + 1,
                         isReady = app.release?.let {
@@ -658,17 +670,20 @@ private fun StoreScreen(
                                     context, "Önce açık olan kurulum onayını tamamlayın.", Toast.LENGTH_SHORT
                                 ).show()
                                 readyUri != null -> {
+                                    setInstallQueueActive(true)
                                     readyOrder = (readyOrder + app.id).distinct()
                                     if (readyOrder.firstOrNull() != app.id) {
                                         Toast.makeText(context, "Güncellemeler sırayla kurulacak.", Toast.LENGTH_SHORT).show()
                                     } else {
-                                        launchReadyInstall(app, readyUri)
+                                        launchNextQueuedInstallIfForeground()
                                     }
                                 }
                                 activeDownloadAppId == app.id || updateQueueIds.contains(app.id) -> Unit
                                 else -> {
+                                    setInstallQueueActive(true)
                                     updateQueueIds = updateQueueIds + app.id
                                     writeManualQueueIds(context, updateQueueIds)
+                                    launchNextQueuedInstallIfForeground()
                                     startNextQueuedDownload()
                                 }
                             }
