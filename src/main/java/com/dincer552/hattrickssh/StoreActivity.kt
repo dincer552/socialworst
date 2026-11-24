@@ -78,6 +78,7 @@ private const val MANUAL_QUEUE_IDS = "queue_ids"
 private const val MANUAL_ACTIVE_DOWNLOAD_ID = "active_download_id"
 private const val MANUAL_ACTIVE_APP_ID = "active_app_id"
 private const val MANUAL_INSTALLING_APP_ID = "installing_app_id"
+private const val MANUAL_INSTALL_QUEUE_ACTIVE = "install_queue_active"
 
 private fun readManualQueueIds(context: Context): List<String> {
     val prefs = context.getSharedPreferences(MANUAL_QUEUE_PREFS, Context.MODE_PRIVATE)
@@ -99,6 +100,7 @@ private fun writeManualQueueIds(context: Context, ids: List<String>) {
 class StoreActivity : ComponentActivity() {
     private val installRequestState = mutableStateOf<Pair<String, Int>?>(null)
     private val resumeRevision = mutableIntStateOf(0)
+    private val activityResumedState = mutableStateOf(false)
     private var installRequestSequence = 0
     private fun captureInstallRequest(source: Intent?) {
         val appId = source?.getStringExtra("install_app_id")
@@ -126,7 +128,8 @@ class StoreActivity : ComponentActivity() {
             )) {
                 StoreScreen(
                     installRequest = installRequestState.value,
-                    statusRefreshKey = resumeRevision.intValue
+                    statusRefreshKey = resumeRevision.intValue,
+                    activityResumed = activityResumedState.value
                 )
             }
         }
@@ -140,14 +143,21 @@ class StoreActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        activityResumedState.value = true
         resumeRevision.intValue += 1
+    }
+
+    override fun onPause() {
+        activityResumedState.value = false
+        super.onPause()
     }
 }
 
 @Composable
 private fun StoreScreen(
     installRequest: Pair<String, Int>? = null,
-    statusRefreshKey: Int = 0
+    statusRefreshKey: Int = 0,
+    activityResumed: Boolean = false
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -159,6 +169,9 @@ private fun StoreScreen(
         context.getSharedPreferences(MANUAL_QUEUE_PREFS, Context.MODE_PRIVATE)
     }
     var updateQueueIds by remember { mutableStateOf(readManualQueueIds(context)) }
+    var installQueueActive by remember {
+        mutableStateOf(manualQueuePrefs.getBoolean(MANUAL_INSTALL_QUEUE_ACTIVE, false))
+    }
     var downloadId by remember {
         mutableStateOf(manualQueuePrefs.getLong(MANUAL_ACTIVE_DOWNLOAD_ID, -1L).takeIf { it > 0L })
     }
@@ -169,6 +182,7 @@ private fun StoreScreen(
     var downloadPercent by remember { mutableIntStateOf(0) }
     var updatePhase by remember { mutableStateOf<String?>(null) }
     var activeUpdateAppId by remember { mutableStateOf<String?>(null) }
+    var validatingAppId by remember { mutableStateOf<String?>(null) }
     var readyOrder by remember { mutableStateOf(StoreUpdateNotifications.readyAppIds(context)) }
     var installingAppId by remember {
         mutableStateOf(manualQueuePrefs.getString(MANUAL_INSTALLING_APP_ID, null))
