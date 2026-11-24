@@ -671,13 +671,10 @@ private fun StoreScreen(
                                 StoreUpdateNotifications.hasReadyVersion(context, app.id, releaseCode)
                             ) StoreUpdateNotifications.installUri(context, app.id) else null
                             when {
-                                installingAppId != null -> Toast.makeText(
-                                    context, "Önce açık olan kurulum onayını tamamlayın.", Toast.LENGTH_SHORT
-                                ).show()
                                 readyUri != null -> {
                                     setInstallQueueActive(true)
                                     readyOrder = (readyOrder + app.id).distinct()
-                                    if (readyOrder.firstOrNull() != app.id) {
+                                    if (installingAppId != null || readyOrder.firstOrNull() != app.id) {
                                         Toast.makeText(context, "Güncellemeler sırayla kurulacak.", Toast.LENGTH_SHORT).show()
                                     } else {
                                         launchNextQueuedInstallIfForeground()
