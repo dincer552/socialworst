@@ -33,6 +33,17 @@
     "versionName": "1.0.67"
   },
   {
+    "id": "tv-remote",
+    "name": "TV Kumanda",
+    "description": "Xiaomi kızılötesi vericisi ile Samsung TV kumandası",
+    "icon": "📺",
+    "packageName": "com.dincer552.tvremote",
+    "repository": "dincer552/tv-apk",
+    "assetName": "tv-remote.apk",
+    "versionCode": 3,
+    "versionName": "1.0.3"
+  },
+  {
     "id": "test-apk",
     "name": "Test APK",
     "description": "My App Store otomatik imzalama test uygulaması",
