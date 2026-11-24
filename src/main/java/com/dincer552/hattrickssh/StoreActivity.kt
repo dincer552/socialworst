@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.height
@@ -221,8 +222,11 @@ private fun StoreScreen(
             }
             if (error != null) {
                 installError = error
+                installingAppId = null
+                manualQueuePrefs.edit().remove(MANUAL_INSTALLING_APP_ID).apply()
                 updatePhase = null
                 activeUpdateAppId = null
+                readyInstallAppId = null
             } else {
                 // Keep the validated APK until Android reports that installation succeeded.
             }
@@ -385,6 +389,8 @@ private fun StoreScreen(
                 readyInstallAppId = null
                 updatePhase = "kuruluyor"
                 activeUpdateAppId = installAppIdFromIntent
+                installingAppId = installAppIdFromIntent
+                manualQueuePrefs.edit().putString(MANUAL_INSTALLING_APP_ID, installAppIdFromIntent).apply()
                 try {
                     val stagedUri = withContext(Dispatchers.IO) { createInstallableApkUri(context, uri) }
                     installUri = stagedUri
@@ -412,11 +418,13 @@ private fun StoreScreen(
                         }
                         if (error != null) {
                             installError = error
+                            installingAppId = null
+                            manualQueuePrefs.edit().remove(MANUAL_INSTALLING_APP_ID).apply()
                             updatePhase = null
                             activeUpdateAppId = null
                         } else {
-                            StoreUpdateNotifications.removeReady(context, installAppIdFromIntent)
-                            readyInstallAppId = null
+                            // Keep the validated APK until successful installation is confirmed.
+                            readyInstallAppId = installAppIdFromIntent
                         }
                     }
                 }
@@ -502,7 +510,6 @@ private fun StoreScreen(
                                 context, "validate", "error", validationError ?: "unknown",
                                 extra = mapOf("durationMs" to validateMs)
                             )
-                            StoreUpdateTrace.endSession(context, "error", "validate failed")
                             updatePhase = null
                             activeUpdateAppId = null
                             StoreUpdateTrace.endSession(context, "error", validationError ?: "validate failed")
