@@ -21,15 +21,47 @@ internal fun verifyInstalledVersionMatches(expected: Long?, actual: Long?): Bool
     expected != null && actual != null && expected == actual
 
 /**
- * Always opens Android's standard APK installer.
+ * Starts Android's regular APK installation screen.
  *
- * No PackageInstaller session is created and no silent installation is attempted.
- * The user must review and confirm installation in Android's own installer UI.
+ * Deliberately does not create a PackageInstaller session, request install
+ * status callbacks, or attempt a silent install. Android displays its own
+ * confirmation UI and the user taps Install/Update to approve the operation.
  */
-@Suppress("UNUSED_PARAMETER")
 fun launchStoreInstallOrUpdate(
     context: Context,
     apkUri: Uri,
     packageName: String,
     expectedVersionCode: Long? = null
-): String? = launchApkInstaller(context, apkUri)
+): String? {
+    StoreUpdateTrace.event(
+        context,
+        stage = "install",
+        status = "launching_system_ui",
+        message = "Opening Android installer; waiting for user confirmation",
+        extra = mapOf(
+            "packageName" to packageName,
+            "expectedVersion" to expectedVersionCode,
+            "silentAttempted" to false
+        )
+    )
+
+    val error = launchApkInstaller(context, apkUri)
+    if (error == null) {
+        StoreUpdateTrace.event(
+            context,
+            stage = "install",
+            status = "awaiting_user_confirmation",
+            message = "Android installer opened; user must approve installation",
+            extra = mapOf("packageName" to packageName, "silentAttempted" to false)
+        )
+    } else {
+        StoreUpdateTrace.event(
+            context,
+            stage = "install",
+            status = "error",
+            message = error,
+            extra = mapOf("packageName" to packageName, "silentAttempted" to false)
+        )
+    }
+    return error
+}
