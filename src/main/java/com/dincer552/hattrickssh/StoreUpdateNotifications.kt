@@ -18,6 +18,7 @@ object StoreUpdateNotifications {
     const val PREFS = "store_background_updates"
     const val PENDING = "pending_downloads"
     const val READY = "ready_downloads"
+    const val READY_ORDER = "ready_order"
     const val CHANNEL = "app_updates"
 
     fun ensureChannel(context: Context) {
@@ -74,25 +75,61 @@ object StoreUpdateNotifications {
                 .put("sha256", app.release?.sha256 ?: "")
                 .put("uri", uri.toString())
         )
+        appendReadyAppId(context, app.id)
         prefs.edit().putString(READY, ready.toString()).apply()
+    }
+
+    fun appendReadyAppId(context: Context, appId: String) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val order = try {
+            JSONArray(prefs.getString(READY_ORDER, "[]") ?: "[]")
+        } catch (_: Exception) {
+            JSONArray()
+        }
+        val existing = (0 until order.length()).map { order.optString(it) }
+        if (appId !in existing) order.put(appId)
+        prefs.edit().putString(READY_ORDER, order.toString()).apply()
     }
 
     fun readyAppIds(context: Context): List<String> {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val ready = JSONObject(prefs.getString(READY, "{}") ?: "{}")
-        val result = mutableListOf<String>()
+        val order = try {
+            JSONArray(prefs.getString(READY_ORDER, "[]") ?: "[]")
+        } catch (_: Exception) {
+            JSONArray()
+        }
+        val result = (0 until order.length())
+            .map { order.optString(it) }
+            .filter { it.isNotBlank() && ready.has(it) }
+            .distinct()
+            .toMutableList()
         val keys = ready.keys()
-        while (keys.hasNext()) result.add(keys.next())
+        while (keys.hasNext()) {
+            val key = keys.next()
+            if (key !in result) result.add(key)
+        }
         return result
     }
 
     fun removeReady(context: Context, appId: String) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val ready = JSONObject(prefs.getString(READY, "{}") ?: "{}")
-        if (ready.has(appId)) {
-            ready.remove(appId)
-            prefs.edit().putString(READY, ready.toString()).apply()
+        ready.remove(appId)
+        val currentOrder = try {
+            JSONArray(prefs.getString(READY_ORDER, "[]") ?: "[]")
+        } catch (_: Exception) {
+            JSONArray()
         }
+        val nextOrder = JSONArray()
+        for (index in 0 until currentOrder.length()) {
+            val id = currentOrder.optString(index)
+            if (id.isNotBlank() && id != appId) nextOrder.put(id)
+        }
+        prefs.edit()
+            .putString(READY, ready.toString())
+            .putString(READY_ORDER, nextOrder.toString())
+            .apply()
     }
 
     fun removePendingDownload(context: Context, downloadId: Long) {
@@ -180,6 +217,7 @@ class StoreDownloadCompletedReceiver : BroadcastReceiver() {
         }
         val ready = JSONObject(prefs.getString(StoreUpdateNotifications.READY, "{}") ?: "{}")
         ready.put(metadata.optString("appId"), JSONObject(metadata.toString()).put("uri", uri.toString()))
+        StoreUpdateNotifications.appendReadyAppId(context, metadata.optString("appId"))
         pending.remove(matchedKey)
         prefs.edit()
             .putString(StoreUpdateNotifications.PENDING, pending.toString())
