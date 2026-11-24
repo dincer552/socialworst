@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -41,9 +42,15 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.*
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -129,6 +136,7 @@ private fun StoreScreen(
     var installError by remember { mutableStateOf<String?>(null) }
     var showSignerSettings by remember { mutableStateOf(false) }
     var showTraceLog by remember { mutableStateOf(false) }
+    var showSettingsMenu by remember { mutableStateOf(false) }
     var selectedApp by remember { mutableStateOf<StoreAppListing?>(null) }
 
     fun refreshCatalog() {
@@ -368,19 +376,35 @@ private fun StoreScreen(
             Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("MY APP STORE", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold)
-                    Text("Tek dokunuşla güncelle", color = StoreMuted, fontSize = 12.sp)
+            val refreshTransition = rememberInfiniteTransition(label = "catalog-refresh")
+            val refreshRotation by refreshTransition.animateFloat(
+                initialValue = 0f,
+                targetValue = 360f,
+                animationSpec = infiniteRepeatable(animation = tween(850, easing = LinearEasing)),
+                label = "refresh-rotation"
+            )
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("MY APP STORE", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                OutlinedButton(
+                    onClick = { showSettingsMenu = true },
+                    modifier = Modifier.size(52.dp, 48.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+                    shape = RoundedCornerShape(24.dp)
+                ) {
+                    Text("⚙", fontSize = 23.sp)
                 }
-                OutlinedButton(onClick = { showTraceLog = true }) {
-                    Text("LOG", fontSize = 9.sp)
-                }
-                OutlinedButton(onClick = { showSignerSettings = true }) {
-                    Text("İMZALAMA", fontSize = 9.sp)
-                }
-                OutlinedButton(onClick = { refreshCatalog() }, enabled = !loading) {
-                    Text(if (loading) "Kontrol…" else "YENİLE")
+                OutlinedButton(
+                    onClick = { refreshCatalog() },
+                    enabled = !loading,
+                    modifier = Modifier.size(52.dp, 48.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+                    shape = RoundedCornerShape(24.dp)
+                ) {
+                    Text(
+                        "↻",
+                        fontSize = 30.sp,
+                        modifier = Modifier.graphicsLayer { rotationZ = if (loading) refreshRotation else 0f }
+                    )
                 }
             }
             if (loading && apps.isEmpty()) {
@@ -511,8 +535,29 @@ private fun StoreScreen(
                     )
                 }
             }
-            Text("Mağaza ${BuildConfig.VERSION_NAME} • Kurulum Android onayıyla tamamlanır", color = StoreMuted, fontSize = 10.sp)
         }
+    }
+    if (showSettingsMenu) {
+        AlertDialog(
+            onDismissRequest = { showSettingsMenu = false },
+            title = { Text("Ayarlar", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(
+                        onClick = { showSettingsMenu = false; showSignerSettings = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("İMZALAMA") }
+                    OutlinedButton(
+                        onClick = { showSettingsMenu = false; showTraceLog = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("GÜNCELLEME LOGU") }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showSettingsMenu = false }) { Text("KAPAT") } },
+            containerColor = StorePanel,
+            titleContentColor = Color.White,
+            textContentColor = Color.White
+        )
     }
     if (selectedApp != null) StoreAppDetailsDialog(app = selectedApp!!, onDismiss = { selectedApp = null })
     if (showSignerSettings) SignerSetupDialog(onDismiss = { showSignerSettings = false })
