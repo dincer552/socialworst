@@ -40,8 +40,8 @@
     "packageName": "com.dincer552.tvremote",
     "repository": "dincer552/tv-apk",
     "assetName": "tv-remote.apk",
-    "versionCode": 3,
-    "versionName": "1.0.3"
+    "versionCode": 10,
+    "versionName": "1.0.10"
   },
   {
     "id": "test-apk",
