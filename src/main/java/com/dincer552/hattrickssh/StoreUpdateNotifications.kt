@@ -176,11 +176,11 @@ class StoreDownloadCompletedReceiver : BroadcastReceiver() {
             StoreUpdateNotifications.removePendingDownload(context, id)
             return
         }
-        val queryResult = cursor.use {
+        val downloadStatus = cursor.use {
             if (!it.moveToFirst()) null
-            else it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)) to manager.getUriForDownloadedFile(id)
+            else it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
         }
-        if (queryResult == null || queryResult.first != DownloadManager.STATUS_SUCCESSFUL) {
+        if (downloadStatus != DownloadManager.STATUS_SUCCESSFUL) {
             StoreUpdateNotifications.removePendingDownload(context, id)
             return
         }
