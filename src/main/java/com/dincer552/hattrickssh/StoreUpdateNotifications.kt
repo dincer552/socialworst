@@ -184,14 +184,29 @@ class StoreDownloadCompletedReceiver : BroadcastReceiver() {
             StoreUpdateNotifications.removePendingDownload(context, id)
             return
         }
-        val uri = queryResult.second
-        if (uri == null) {
+        val expectedPackage = metadata.optString("packageName")
+        val expectedVersion = metadata.optLong("versionCode")
+        val appId = metadata.optString("appId")
+        // DownloadManager's content://downloads URI can require ACCESS_ALL_DOWNLOADS.
+        // This download was explicitly placed in this app's external-files directory,
+        // so read the corresponding file directly instead of opening that provider URI.
+        val downloadedFile = try {
+            storeDownloadFile(context, appId, expectedVersion)
+        } catch (_: Exception) {
             StoreUpdateNotifications.removePendingDownload(context, id)
             return
         }
-        val expectedPackage = metadata.optString("packageName")
-        val expectedVersion = metadata.optLong("versionCode")
-        val identityError = validateApkIdentity(context, uri, expectedPackage, expectedVersion)
+        if (!downloadedFile.isFile || downloadedFile.length() <= 0L) {
+            StoreUpdateNotifications.removePendingDownload(context, id)
+            return
+        }
+        val stagedUri = try {
+            createInstallableApkUri(context, downloadedFile)
+        } catch (_: Exception) {
+            StoreUpdateNotifications.removePendingDownload(context, id)
+            return
+        }
+        val identityError = validateApkIdentity(context, stagedUri, expectedPackage, expectedVersion)
         if (identityError != null) {
             StoreUpdateNotifications.removePendingDownload(context, id)
             return
@@ -199,7 +214,7 @@ class StoreDownloadCompletedReceiver : BroadcastReceiver() {
         val expectedSha = metadata.optString("sha256")
         if (expectedSha.isNotBlank()) {
             val digest = MessageDigest.getInstance("SHA-256")
-            context.contentResolver.openInputStream(uri)?.use { input ->
+            context.contentResolver.openInputStream(stagedUri)?.use { input ->
                 val buffer = ByteArray(16 * 1024)
                 while (true) {
                     val count = input.read(buffer)
@@ -217,7 +232,7 @@ class StoreDownloadCompletedReceiver : BroadcastReceiver() {
             }
         }
         val ready = JSONObject(prefs.getString(StoreUpdateNotifications.READY, "{}") ?: "{}")
-        ready.put(metadata.optString("appId"), JSONObject(metadata.toString()).put("uri", uri.toString()))
+        ready.put(appId, JSONObject(metadata.toString()).put("uri", stagedUri.toString()))
         StoreUpdateNotifications.appendReadyAppId(context, metadata.optString("appId"))
         pending.remove(matchedKey)
         prefs.edit()
