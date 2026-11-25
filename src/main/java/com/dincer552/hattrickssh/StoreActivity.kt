@@ -300,23 +300,44 @@ private fun StoreScreen(
     fun launchReadyInstall(app: StoreAppListing, uri: Uri) {
         if (installingAppId != null) return
         installError = null
-        installUri = uri
+        installUri = null
         installPackageName = app.packageName
         readyInstallAppId = app.id
         installingAppId = app.id
         manualQueuePrefs.edit().putString(MANUAL_INSTALLING_APP_ID, app.id).apply()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-            !context.packageManager.canRequestPackageInstalls()
-        ) {
-            updatePhase = "izin"
-            installPermissionLauncher.launch(
-                Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
-            )
-        } else {
-            updatePhase = "kuruluyor"
-            val error = launchStoreInstallOrUpdate(context, uri, app.packageName, app.versionCode.toLong())
-            if (error != null) {
-                installError = error
+        updatePhase = "hazirlaniyor"
+        // Older ready-queue entries may still contain DownloadManager's
+        // content://downloads URI. Copy every queued APK into our FileProvider
+        // before handing it to Android's package installer.
+        scope.launch {
+            try {
+                val stagedUri = withContext(Dispatchers.IO) {
+                    createInstallableApkUri(context, uri)
+                }
+                installUri = stagedUri
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                    !context.packageManager.canRequestPackageInstalls()
+                ) {
+                    updatePhase = "izin"
+                    installPermissionLauncher.launch(
+                        Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
+                    )
+                } else {
+                    updatePhase = "kuruluyor"
+                    val error = launchStoreInstallOrUpdate(
+                        context, stagedUri, app.packageName, app.versionCode.toLong()
+                    )
+                    if (error != null) {
+                        installError = error
+                        installingAppId = null
+                        manualQueuePrefs.edit().remove(MANUAL_INSTALLING_APP_ID).apply()
+                        updatePhase = null
+                        readyInstallAppId = null
+                        setInstallQueueActive(false)
+                    }
+                }
+            } catch (error: Exception) {
+                installError = "APK kurulum için hazırlanamadı: ${error.message ?: error.javaClass.simpleName}"
                 installingAppId = null
                 manualQueuePrefs.edit().remove(MANUAL_INSTALLING_APP_ID).apply()
                 updatePhase = null
