@@ -838,9 +838,13 @@ private fun StoreAppCard(
                 )
             }
             if (release != null) {
+                val canStartUpdate = packageState == StorePackageState.NOT_INSTALLED ||
+                    packageState == StorePackageState.UPDATE_AVAILABLE
+                // The install FIFO must not block downloading another app.
+                // Only a prepared APK waits for its turn to open Android's installer.
                 val buttonEnabled = !busy && !isUpdating && !isValidating && !isQueued && !isInstalling &&
-                    (isReady || isFirstReady && packageState != StorePackageState.UP_TO_DATE) &&
-                    (!isReady || isFirstReady)
+                    if (isReady) isFirstReady else canStartUpdate
+                val buttonShouldBeGreen = isReady && isFirstReady || !isReady && canStartUpdate
                 val buttonLabel = when {
                     isInstalling -> "KURULUM BEKLENİYOR…"
                     isValidating -> "PAKET KONTROL EDİLİYOR…"
@@ -857,7 +861,7 @@ private fun StoreAppCard(
                         .fillMaxWidth()
                         .height(42.dp)
                         .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFF2E3943))
+                        .background(if (buttonShouldBeGreen && buttonEnabled) StoreGreen else Color(0xFF2E3943))
                         .clickable(enabled = buttonEnabled, onClick = onInstall),
                     contentAlignment = Alignment.Center
                 ) {
@@ -869,16 +873,10 @@ private fun StoreAppCard(
                                 .fillMaxWidth((downloadPercent.coerceIn(0, 100) / 100f))
                                 .background(StoreGreen)
                         )
-                    } else if (isReady && buttonEnabled) {
-                        Box(
-                            Modifier
-                                .fillMaxSize()
-                                .background(StoreGreen)
-                        )
                     }
                     Text(
                         buttonLabel,
-                        color = if (isUpdating || isReady && buttonEnabled) Color(0xFF07130D) else Color.White,
+                        color = if (isUpdating || buttonShouldBeGreen && buttonEnabled) Color(0xFF07130D) else Color.White,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
                     )
