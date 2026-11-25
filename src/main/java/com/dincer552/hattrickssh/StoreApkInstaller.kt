@@ -6,24 +6,58 @@ import android.content.pm.PackageManager
 import android.content.pm.Signature
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import androidx.core.content.FileProvider
 import java.io.File
+import java.io.FileInputStream
 import java.io.IOException
+import java.io.InputStream
 import java.security.MessageDigest
 
-/** Stages DownloadManager content URIs behind the app's non-exported FileProvider. */
+/**
+ * Exact app-specific file used by DownloadManager's
+ * setDestinationInExternalFilesDir(..., DIRECTORY_DOWNLOADS, filename).
+ * Read this local file directly; never open DownloadProvider content:// URIs.
+ */
 @Throws(IOException::class)
-fun createInstallableApkUri(context: Context, source: Uri): Uri {
+fun storeDownloadFile(context: Context, appId: String, versionCode: Long): File {
+    val directory = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+        ?: throw IOException("Uygulama indirme klasörüne erişilemiyor.")
+    val safeId = appId.replace(Regex("[^A-Za-z0-9._-]"), "_")
+    return File(directory, "$safeId-$versionCode.apk")
+}
+
+/** Stages an already downloaded app-private file behind our FileProvider. */
+@Throws(IOException::class)
+fun createInstallableApkUri(context: Context, source: File): Uri {
+    if (!source.isFile || source.length() <= 0L) {
+        throw IOException("İndirilen APK dosyası bulunamadı veya boş: ${source.name}")
+    }
+    return stageInstallableApk(context) { FileInputStream(source) }
+}
+
+/**
+ * Compatibility path for older saved entries that already point to a
+ * readable URI (for example, our own FileProvider URI).
+ * New downloads must use the File overload above.
+ */
+@Throws(IOException::class)
+fun createInstallableApkUri(context: Context, source: Uri): Uri =
+    stageInstallableApk(context) {
+        context.contentResolver.openInputStream(source)
+            ?: throw IOException("İndirilen APK okunamadı.")
+    }
+
+@Throws(IOException::class)
+private fun stageInstallableApk(context: Context, openInput: () -> InputStream): Uri {
     val directory = File(context.cacheDir, "store-apks")
     if (!directory.exists() && !directory.mkdirs()) {
         throw IOException("APK önbellek klasörü oluşturulamadı.")
     }
     val target = File.createTempFile("install-", ".apk", directory)
     try {
-        val input = context.contentResolver.openInputStream(source)
-            ?: throw IOException("İndirilen APK okunamadı.")
-        input.use { inputStream ->
-            target.outputStream().use { output -> inputStream.copyTo(output) }
+        openInput().use { input ->
+            target.outputStream().use { output -> input.copyTo(output) }
         }
         if (!target.isFile || target.length() <= 0L) {
             throw IOException("İndirilen APK boş veya geçersiz.")
