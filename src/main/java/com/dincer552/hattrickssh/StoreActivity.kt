@@ -312,7 +312,13 @@ private fun StoreScreen(
         scope.launch {
             try {
                 val stagedUri = withContext(Dispatchers.IO) {
-                    createInstallableApkUri(context, uri)
+                    try {
+                        createInstallableApkUri(context, uri)
+                    } catch (staleDownloadUri: Exception) {
+                        val downloadedFile = storeDownloadFile(context, app.id, app.versionCode.toLong())
+                        if (!downloadedFile.isFile || downloadedFile.length() <= 0L) throw staleDownloadUri
+                        createInstallableApkUri(context, downloadedFile)
+                    }
                 }
                 installUri = stagedUri
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
@@ -489,7 +495,18 @@ private fun StoreScreen(
                 installingAppId = installAppIdFromIntent
                 manualQueuePrefs.edit().putString(MANUAL_INSTALLING_APP_ID, installAppIdFromIntent).apply()
                 try {
-                    val stagedUri = withContext(Dispatchers.IO) { createInstallableApkUri(context, uri) }
+                    val stagedUri = withContext(Dispatchers.IO) {
+                        try {
+                            createInstallableApkUri(context, uri)
+                        } catch (staleDownloadUri: Exception) {
+                            val versionCode = StoreUpdateNotifications.readyVersionCode(context, installAppIdFromIntent)
+                                ?: apps.firstOrNull { it.id == installAppIdFromIntent }?.versionCode?.toLong()
+                                ?: throw staleDownloadUri
+                            val downloadedFile = storeDownloadFile(context, installAppIdFromIntent, versionCode)
+                            if (!downloadedFile.isFile || downloadedFile.length() <= 0L) throw staleDownloadUri
+                            createInstallableApkUri(context, downloadedFile)
+                        }
+                    }
                     installUri = stagedUri
                     installPackageName = StoreUpdateNotifications.installPackageName(context, installAppIdFromIntent)
                     readyInstallAppId = installAppIdFromIntent
@@ -546,7 +563,7 @@ private fun StoreScreen(
                     val status = it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
                     val current = it.getLong(it.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
                     val total = it.getLong(it.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
-                    Triple(status, if (total > 0) (current * 100 / total).toInt().coerceIn(0, 100) else 0, manager.getUriForDownloadedFile(id))
+                    Pair(status, if (total > 0) (current * 100 / total).toInt().coerceIn(0, 100) else 0)
                 }
             }
             if (snapshot == null) {
@@ -567,7 +584,6 @@ private fun StoreScreen(
             downloadPercent = snapshot.second
             when (snapshot.first) {
                 DownloadManager.STATUS_SUCCESSFUL -> {
-                    val uri = snapshot.third
                     val app = activeApp
                     val finishedId = id
                     downloadId = null
@@ -578,8 +594,9 @@ private fun StoreScreen(
                         .apply()
                     activeDownloadAppId = null
                     scope.launch {
-                        if (uri == null || app == null) {
-                            installError = "İndirilen paket bulunamadı."
+                        val sourceFile = storeDownloadFile(context, app.id, app.versionCode.toLong())
+                        if (!sourceFile.isFile || sourceFile.length() <= 0L) {
+                            installError = "İndirilen APK dosyası bulunamadı: ${sourceFile.name}"
                             StoreUpdateTrace.event(context, "download", "error", "Downloaded file URI missing")
                             StoreUpdateTrace.endSession(context, "error", "missing uri")
                             validatingAppId = null
@@ -599,7 +616,7 @@ private fun StoreScreen(
                         StoreUpdateTrace.event(context, "validate", "start", "Stage + identity + sha256")
                         val staged = try {
                             withContext(Dispatchers.IO) {
-                                val stagedUri = createInstallableApkUri(context, uri)
+                                val stagedUri = createInstallableApkUri(context, sourceFile)
                                 val validation = validateDownloadedApk(context, stagedUri, app)
                                 if (validation != null) null to validation else stagedUri to null
                             }
