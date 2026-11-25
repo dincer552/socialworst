@@ -1,6 +1,8 @@
 package com.dincer552.hattrickssh
 
 import android.app.DownloadManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -14,6 +16,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -54,6 +57,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -72,6 +76,39 @@ private val StoreBackground = Color(0xFF080D12)
 private val StorePanel = Color(0xFF121B24)
 private val StoreGreen = Color(0xFF38D98A)
 private val StoreMuted = Color(0xFF91A1B2)
+
+@Composable
+private fun StoreRealAppIcon(
+    packageName: String,
+    fallbackEmoji: String,
+    size: androidx.compose.ui.unit.Dp,
+    fontSize: androidx.compose.ui.unit.TextUnit
+) {
+    val context = LocalContext.current
+    val iconBitmap = remember(packageName) {
+        try {
+            val drawable = context.packageManager.getApplicationIcon(packageName)
+            val width = drawable.intrinsicWidth.takeIf { it > 0 }?.coerceAtMost(192) ?: 96
+            val height = drawable.intrinsicHeight.takeIf { it > 0 }?.coerceAtMost(192) ?: 96
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            drawable.setBounds(0, 0, width, height)
+            drawable.draw(canvas)
+            bitmap.asImageBitmap()
+        } catch (_: Exception) {
+            null
+        }
+    }
+    if (iconBitmap != null) {
+        Image(
+            bitmap = iconBitmap,
+            contentDescription = "$packageName uygulama simgesi",
+            modifier = Modifier.size(size)
+        )
+    } else {
+        Text(fallbackEmoji, fontSize = fontSize)
+    }
+}
 
 private const val MANUAL_QUEUE_PREFS = "store_manual_update_queue"
 private const val MANUAL_QUEUE_IDS = "queue_ids"
@@ -779,7 +816,12 @@ private fun StoreAppCard(
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenDetails)) {
-                Text(app.icon, fontSize = 25.sp)
+                StoreRealAppIcon(
+                    packageName = app.packageName,
+                    fallbackEmoji = app.icon,
+                    size = 34.dp,
+                    fontSize = 25.sp
+                )
                 Column(Modifier.weight(1f).padding(start = 10.dp)) {
                     Text(app.name, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     Text(app.description, color = StoreMuted, fontSize = 11.sp)
@@ -876,7 +918,12 @@ private fun StoreAppDetailsDialog(app: StoreAppListing, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(app.icon, fontSize = 27.sp)
+            StoreRealAppIcon(
+                packageName = app.packageName,
+                fallbackEmoji = app.icon,
+                size = 40.dp,
+                fontSize = 27.sp
+            )
             Text(app.name, modifier = Modifier.padding(start = 10.dp), fontWeight = FontWeight.Bold)
         } },
         text = {
