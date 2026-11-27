@@ -19,6 +19,10 @@ from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import Response
 
 APP = FastAPI(title="My App Store APK Signer", docs_url=None, redoc_url=None)
+
+# Public Instagram Reel streaming is isolated behind its own URL namespace.
+from instagram_stream import router as instagram_stream_router
+APP.include_router(instagram_stream_router)
 DATA_DIR = Path(os.environ.get("SIGNING_DATA_DIR", "/var/lib/apk-signing"))
 KEY_DIR = DATA_DIR / "keys"
 REPOSITORY_FILE = DATA_DIR / "repositories.enc"

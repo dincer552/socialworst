@@ -1,4 +1,4 @@
-name: Deploy central APK signer to Azure VM
+name: Deploy central APK signer and Instagram Reel stream service
 
 on:
   push:
@@ -18,15 +18,21 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     env:
       SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate signer Python syntax
-        run: python3 -m py_compile signing-service/main.py
+      - name: Validate Python syntax and resolver tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/resolver-test-venv"
+          "$RUNNER_TEMP/resolver-test-venv/bin/python" -m pip install --disable-pip-version-check -r signing-service/requirements.txt
+          "$RUNNER_TEMP/resolver-test-venv/bin/python" -m py_compile signing-service/main.py signing-service/instagram_stream.py
+          "$RUNNER_TEMP/resolver-test-venv/bin/python" -m unittest discover -s signing-service -p 'test_*.py' -v
 
       - name: Validate deployment credentials
         shell: bash
@@ -48,15 +54,54 @@ jobs:
           curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o "$RUNNER_TEMP/cloudflared"
           chmod +x "$RUNNER_TEMP/cloudflared"
 
-      - name: Deploy signer code and restart service
+      - name: Deploy signer and Reel resolver files
         shell: bash
         run: |
           set -euo pipefail
-          cat signing-service/main.py | ssh -i "$HOME/.ssh/id_signer_deploy" \
-            -o IdentitiesOnly=yes \
-            -o BatchMode=yes \
-            -o StrictHostKeyChecking=accept-new \
-            -o ConnectTimeout=20 \
-            -o ProxyCommand="$RUNNER_TEMP/cloudflared access ssh --hostname %h" \
-            azureuser@ssh.dinceryuksek.com \
-            'sudo test -d /opt/apk-signing/signing-service && sudo tee /tmp/apk-signing-main.py >/dev/null && sudo install -o root -g root -m 0644 /tmp/apk-signing-main.py /opt/apk-signing/signing-service/main.py && sudo rm -f /tmp/apk-signing-main.py && sudo systemctl restart apk-signing && sleep 2 && (curl --fail --silent --show-error http://127.0.0.1:8787/health || { sudo systemctl status --no-pager -l apk-signing || true; sudo journalctl -u apk-signing -n 60 --no-pager || true; exit 1; })'
+          SSH=(ssh -i "$HOME/.ssh/id_signer_deploy"
+            -o IdentitiesOnly=yes
+            -o BatchMode=yes
+            -o StrictHostKeyChecking=accept-new
+            -o ConnectTimeout=20
+            -o ProxyCommand="$RUNNER_TEMP/cloudflared access ssh --hostname %h"
+            azureuser@ssh.dinceryuksek.com)
+
+          cat signing-service/main.py | "${SSH[@]}" \
+            'sudo tee /tmp/apk-signing-main.py >/dev/null'
+          cat signing-service/instagram_stream.py | "${SSH[@]}" \
+            'sudo tee /tmp/instagram-stream.py >/dev/null'
+          cat signing-service/requirements.txt | "${SSH[@]}" \
+            'sudo tee /tmp/apk-signing-requirements.txt >/dev/null'
+
+          "${SSH[@]}" 'set -e
+            sudo test -d /opt/apk-signing/signing-service
+            sudo install -o root -g root -m 0644 /tmp/apk-signing-main.py /opt/apk-signing/signing-service/main.py
+            sudo install -o root -g root -m 0644 /tmp/instagram-stream.py /opt/apk-signing/signing-service/instagram_stream.py
+            sudo install -o root -g root -m 0644 /tmp/apk-signing-requirements.txt /opt/apk-signing/signing-service/requirements.txt
+            sudo rm -f /tmp/apk-signing-main.py /tmp/instagram-stream.py /tmp/apk-signing-requirements.txt
+            sudo /opt/apk-signing/.venv/bin/python -m pip install --disable-pip-version-check -r /opt/apk-signing/signing-service/requirements.txt
+            sudo systemctl restart apk-signing
+            sleep 3
+            curl --fail --silent --show-error http://127.0.0.1:8787/health
+          '
+
+      - name: Verify public Reel resolver and HTTP byte-range seeking
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="https://signer.dinceryuksek.com"
+          RESPONSE="$(curl --fail --silent --show-error --max-time 90 \
+            -H "Content-Type: application/json" \
+            -X POST "$BASE/v1/instagram/resolve" \
+            -d '{"url":"https://www.instagram.com/reel/Df1ipAQNty9/"}')"
+          echo "$RESPONSE" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("ok") is True and d.get("seek_supported") is True, d; print("Anonymous Reel resolve: OK; duration=", d.get("duration"))'
+          STREAM_PATH="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["stream_url"])' <<< "$RESPONSE")"
+          curl --silent --show-error --max-time 45 \
+            -H "Range: bytes=0-1023" \
+            -D "$RUNNER_TEMP/stream-headers.txt" \
+            -o /dev/null "$BASE$STREAM_PATH"
+          cat "$RUNNER_TEMP/stream-headers.txt"
+          grep -Eiq '^HTTP/[^ ]+ 206([[:space:]]|$)' "$RUNNER_TEMP/stream-headers.txt"
+          grep -Eiq '^content-range: bytes 0-1023/' "$RUNNER_TEMP/stream-headers.txt"
+          grep -Eiq '^accept-ranges: bytes' "$RUNNER_TEMP/stream-headers.txt"
+          echo "Instagram stream byte-range test: OK (HTTP 206)"

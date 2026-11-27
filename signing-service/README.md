@@ -85,3 +85,18 @@ Repo ilk kez bir JKS ile kaydedildiğinde servis onu izin listesine otomatik ekl
 - `POST /v1/bootstrap`: yalnızca imzası doğrulanmış GitHub Actions OIDC kimliğiyle çalışır. `main` dalındaki repo, kendi yeni paket anahtarını ilk derlemede otomatik oluşturabilir. Var olan başka uygulama anahtarına repo ekleyemez; mevcut anahtar için yönetici bağlantısı gerekir.
 - `POST /v1/sign`: Bearer GitHub OIDC token + multipart `key_id`, `apk`.
 - `GET /health`: servis sağlık kontrolü.
+
+
+## Public Instagram Reel seek/stream endpoint
+
+The signer host also exposes an isolated, anonymous public-Reel streaming API used by LinkViewer:
+
+- `POST /v1/instagram/resolve` accepts a public Instagram Reel permalink and returns a short-lived signed local stream path plus duration metadata.
+- `GET /v1/instagram/stream/{token}` proxies video bytes without writing the media to disk.
+- Client `Range: bytes=...` headers are forwarded to Instagram's CDN and the upstream `206 Partial Content`, `Content-Range` and `Accept-Ranges` headers are preserved. This is what enables Android Media3 to seek forward/backward on the timeline.
+- Resolution uses current yt-dlp with curl-cffi browser impersonation. No Instagram account, password, cookies, or private-session data is used.
+- Only public `/reel/{shortcode}` and `/reels/{shortcode}` URLs are accepted. Private, age-gated, deleted or login-required Reels are not bypassed; those should fall back to Instagram's official embed.
+- CDN URLs are cached in memory briefly and are never returned to the Android app. Stream tokens expire; expired CDN links are resolved again once after a 403.
+- No video file is saved by the server. The endpoint is a streaming proxy, not a download archive.
+
+The deployment workflow includes unit tests and a live check against the LinkViewer test Reel. It also requests bytes 0–1023 and requires HTTP 206 with a matching Content-Range header before reporting the seeking check as successful.
