@@ -89,6 +89,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          SSH=(ssh -i "$HOME/.ssh/id_signer_deploy"
+            -o IdentitiesOnly=yes
+            -o BatchMode=yes
+            -o StrictHostKeyChecking=accept-new
+            -o ConnectTimeout=15
+            -o ProxyCommand="$RUNNER_TEMP/cloudflared access ssh --hostname %h"
+            azureuser@ssh.dinceryuksek.com)
+          on_error() {
+            STATUS=$?
+            echo "::error::Resolver smoke test failed; collecting Azure signer service diagnostics."
+            "${SSH[@]}" 'sudo journalctl -u apk-signing -n 100 --no-pager' || true
+            exit "$STATUS"
+          }
+          trap on_error ERR
           BASE="https://signer.dinceryuksek.com"
           HTTP_RESULT="$(curl --silent --show-error --max-time 90 -w '\nHTTP_STATUS:%{http_code}' \
             -H "Content-Type: application/json" \
