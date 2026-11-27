@@ -11,6 +11,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 import threading
@@ -25,6 +26,7 @@ from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError
 
 router = APIRouter()
+_LOG = logging.getLogger("instagram_stream")
 SHORTCODE_RE = re.compile(r"^[A-Za-z0-9_-]{5,32}$")
 PATH_RE = re.compile(r"^/(?:reel|reels)/([A-Za-z0-9_-]+)/?$", re.IGNORECASE)
 CACHE_TTL_SECONDS = 7 * 60
@@ -122,12 +124,22 @@ def read_stream_token(token: str, *, now: int | None = None) -> str:
     return shortcode
 
 
+def _safe_extractor_diagnostic(error: Exception) -> str:
+    detail = str(error)
+    detail = re.sub(r"https?://[^\\s'\\\"<>]+", "<redacted-url>", detail)
+    detail = re.sub(r"(?i)(sessionid|csrftoken|mid|ds_user_id)=([^;\\s]+)", r"\\1=<redacted>", detail)
+    detail = re.sub(r"[^\\x20-\\x7e\\t]", " ", detail)
+    return (type(error).__name__ + ": " + detail[:240]).strip()
+
+
 def _friendly_extractor_error(error: Exception) -> str:
     raw = str(error).lower()
     if any(term in raw for term in ("login", "logged-in", "log in", "empty media", "private", "rate-limit", "rate limit")):
         return "Instagram bu Reel için anonim video akışına izin vermedi. Gönderi giriş, yaş veya erişim kısıtlamasına tabi olabilir."
     if any(term in raw for term in ("not exist", "not available", "404", "removed")):
         return "Reel bulunamadı; silinmiş, gizli veya bağlantı hatalı olabilir."
+    if any(term in raw for term in ("403", "forbidden", "429", "too many requests", "rate limit")):
+        return "Instagram anonim video akışını engelledi veya istekleri sınırladı."
     return "Instagram video akışı çözümlenemedi. Instagram geçici olarak anonim erişimi sınırlıyor olabilir."
 
 
@@ -160,9 +172,13 @@ def _extract_video(shortcode: str, *, force: bool = False) -> dict:
         finally:
             _EXTRACT_SEMAPHORE.release()
     except DownloadError as exc:
-        raise ValueError(_friendly_extractor_error(exc)) from exc
+        diagnostic = _safe_extractor_diagnostic(exc)
+        _LOG.warning("Anonymous Instagram extraction failed for shortcode=%s: %s", shortcode, diagnostic, exc_info=True)
+        raise ValueError(_friendly_extractor_error(exc) + " (tanılama: " + diagnostic + ")") from exc
     except Exception as exc:
-        raise ValueError(_friendly_extractor_error(exc)) from exc
+        diagnostic = _safe_extractor_diagnostic(exc)
+        _LOG.exception("Unexpected Instagram resolver error for shortcode=%s: %s", shortcode, diagnostic)
+        raise ValueError(_friendly_extractor_error(exc) + " (tanılama: " + diagnostic + ")") from exc
 
     video_url = info.get("url")
     if not isinstance(video_url, str):
