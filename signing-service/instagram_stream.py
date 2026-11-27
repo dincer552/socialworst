@@ -23,6 +23,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from yt_dlp import YoutubeDL
+from yt_dlp.networking.impersonate import ImpersonateTarget
 from yt_dlp.utils import DownloadError
 
 router = APIRouter()
@@ -161,7 +162,7 @@ def _extract_video(shortcode: str, *, force: bool = False) -> dict:
         "extractor_retries": 1,
         "retries": 1,
         # curl-cffi is installed; match a recent browser TLS fingerprint.
-        "impersonate": "chrome",
+        "impersonate": ImpersonateTarget.from_str("chrome"),
     }
     try:
         if not _EXTRACT_SEMAPHORE.acquire(timeout=3):
