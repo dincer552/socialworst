@@ -90,10 +90,15 @@ jobs:
         run: |
           set -euo pipefail
           BASE="https://signer.dinceryuksek.com"
-          RESPONSE="$(curl --fail --silent --show-error --max-time 90 \
+          HTTP_RESULT="$(curl --silent --show-error --max-time 90 -w '\nHTTP_STATUS:%{http_code}' \
             -H "Content-Type: application/json" \
             -X POST "$BASE/v1/instagram/resolve" \
             -d '{"url":"https://www.instagram.com/reel/Df1ipAQNty9/"}')"
+          HTTP_STATUS="${HTTP_RESULT##*HTTP_STATUS:}"
+          RESPONSE="${HTTP_RESULT%$'\n'HTTP_STATUS:*}"
+          echo "Resolver HTTP status: $HTTP_STATUS"
+          echo "$RESPONSE"
+          test "$HTTP_STATUS" = "200"
           echo "$RESPONSE" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("ok") is True and d.get("seek_supported") is True, d; print("Anonymous Reel resolve: OK; duration=", d.get("duration"))'
           STREAM_PATH="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["stream_url"])' <<< "$RESPONSE")"
           curl --silent --show-error --max-time 45 \
